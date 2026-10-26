@@ -1,0 +1,1827 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Prüfungen aus einem Excel-Fragenkatalog erstellen: Auswahlregeln je Fachbereich und Thema, drei Fassungen, Varianten, reproduzierbar per Code. Alle Daten bleiben im Browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='3' width='22' height='26' rx='2' fill='%23fff' stroke='%232747b8' stroke-width='2'/%3E%3Cpath d='M10 10h12M10 15h12M10 20h7' stroke='%232747b8' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M19 22l2 2 4-5' fill='none' stroke='%23c4301f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Prüfungsbogen-Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+/* Layout: Werkbank – links die Einstellungsspalte (1 Fragenkatalog → 2 Auswahlregeln → 3 Ausgabe, darunter Reproduktion),
+   rechts die Papiervorschau mit drei Fassungs-Reitern; unter 1080px alles einspaltig. Tinte-Blau für Bedienung, Rotstift nur für Lösungen. */
+:root{
+  --bg:#ebeff4; --panel:#fbfcfe; --sunken:#f1f4f8; --ink:#182133; --muted:#556073; --faint:#848ea0;
+  --line:#d3d9e2; --line-strong:#b4bdca;
+  --accent:#2747b8; --accent-hover:#1d3896; --on-accent:#ffffff; --accent-soft:#e1e8fb;
+  --ok:#2a7748; --ok-soft:#e0f1e6; --warn:#875700; --warn-soft:#fbeed3; --danger:#b42318; --danger-soft:#fde6e3;
+  --paper:#ffffff; --paper-ink:#15181f; --paper-muted:#5d6370; --paper-rule:#c2c8d2; --paper-pen:#bd2a1c; --paper-edge:#d5dae2;
+  --shadow:0 1px 2px rgb(16 28 52 / .06), 0 10px 28px rgb(16 28 52 / .08);
+  --font-ui:"Atkinson Hyperlegible Next", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:"Atkinson Hyperlegible Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-paper:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --radius:6px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f131b; --panel:#161b26; --sunken:#121722; --ink:#e4e8f0; --muted:#9aa3b5; --faint:#6d778a;
+    --line:#283041; --line-strong:#3a4457;
+    --accent:#8aa5ff; --accent-hover:#a8bcff; --on-accent:#0c1430; --accent-soft:#1d2849;
+    --ok:#6fcf97; --ok-soft:#163222; --warn:#efb54a; --warn-soft:#382a0e; --danger:#ff8b7b; --danger-soft:#3b1916;
+    --paper:#e5e8ed; --paper-ink:#15181f; --paper-muted:#515866; --paper-rule:#a9b0bb; --paper-pen:#b0251a; --paper-edge:#c1c7d0;
+    --shadow:0 1px 2px rgb(0 0 0 / .3), 0 12px 30px rgb(0 0 0 / .35);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f131b; --panel:#161b26; --sunken:#121722; --ink:#e4e8f0; --muted:#9aa3b5; --faint:#6d778a;
+  --line:#283041; --line-strong:#3a4457;
+  --accent:#8aa5ff; --accent-hover:#a8bcff; --on-accent:#0c1430; --accent-soft:#1d2849;
+  --ok:#6fcf97; --ok-soft:#163222; --warn:#efb54a; --warn-soft:#382a0e; --danger:#ff8b7b; --danger-soft:#3b1916;
+  --paper:#e5e8ed; --paper-ink:#15181f; --paper-muted:#515866; --paper-rule:#a9b0bb; --paper-pen:#b0251a; --paper-edge:#c1c7d0;
+  --shadow:0 1px 2px rgb(0 0 0 / .3), 0 12px 30px rgb(0 0 0 / .35);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0}img{max-width:100%}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:15px;line-height:1.5}
+.app{max-width:1440px;margin:0 auto;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:20px 56px}
+
+/* Kopf */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 28px;padding-block:6px 18px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.top h1{font-family:var(--font-paper);font-weight:600;font-size:clamp(1.65rem, 1.25rem + 1.3vw, 2.25rem);line-height:1.1;letter-spacing:-.012em;margin:0;text-wrap:balance}
+.top p{margin:.4rem 0 0;color:var(--muted);max-width:64ch}
+.top .src{font-size:.82rem;color:var(--muted);display:flex;gap:8px;align-items:center;min-width:0}
+.top .src b{color:var(--ink);font-weight:600;overflow-wrap:anywhere}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--warn);flex:none}
+.dot.user{background:var(--ok)}
+
+/* Raster */
+.layout{display:grid;gap:20px;grid-template-columns:minmax(0,1fr);align-items:start}
+@media (min-width:1080px){.layout{grid-template-columns:minmax(0,27.5rem) minmax(0,1fr);gap:28px}}
+.controls{display:grid;gap:16px;min-width:0}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px 18px;display:grid;gap:14px;min-width:0}
+.step h2{margin:0;font-size:1.02rem;font-weight:700;display:flex;align-items:center;gap:10px;line-height:1.25}
+.num{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent);display:inline-grid;place-items:center;font:600 .78rem/1 var(--font-mono);flex:none}
+.step h3{margin:4px 0 0;font-size:.76rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+
+/* Felder */
+.field{display:grid;gap:5px;min-width:0;align-content:start}
+.label{font-size:.74rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+input[type=text],input[type=number],select,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line-strong);border-radius:4px;padding:7px 9px;min-width:0;width:100%}
+textarea{resize:vertical}
+input::placeholder,textarea::placeholder{color:var(--faint)}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.hint{font-size:.83rem;color:var(--muted);margin:0}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:12px}
+@media (max-width:420px){.row2{grid-template-columns:minmax(0,1fr)}}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:.93rem;cursor:pointer}
+.check input{margin:.22em 0 0;width:16px;height:16px;accent-color:var(--accent);flex:none}
+.inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.inline select{width:auto}
+.mono{font-family:var(--font-mono)}
+
+/* Knöpfe */
+.btn{font:inherit;font-weight:600;border-radius:4px;padding:8px 14px;border:1px solid var(--line-strong);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;line-height:1.25;text-align:center}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:var(--on-accent)}
+.btn.big{padding:12px 18px;font-size:1rem;width:100%}
+.btn[disabled]{opacity:.55;cursor:progress}
+.link{font:inherit;font-weight:600;background:none;border:none;padding:0;color:var(--accent);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.link:hover{color:var(--accent-hover)}
+
+/* Datei */
+.drop{position:relative;display:grid;gap:2px;place-items:center;text-align:center;padding:18px 12px;border:1.5px dashed var(--line-strong);border-radius:var(--radius);background:var(--sunken);cursor:pointer;transition:background .15s,border-color .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.drop strong{color:var(--accent)}
+.drop span{font-size:.85rem;color:var(--muted)}
+.file-status{display:grid;gap:6px;font-size:.92rem;min-width:0}
+.file-name{font-weight:700;overflow-wrap:anywhere}
+.stats{display:flex;flex-wrap:wrap;gap:2px 16px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stats b{color:var(--ink)}
+.file-actions{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.88rem}
+.busy{color:var(--accent);font-weight:600}
+.cols{display:flex;flex-wrap:wrap;gap:6px}
+.col{font-size:.78rem;padding:2px 9px;border-radius:99px;display:inline-flex;gap:5px;align-items:center;background:var(--ok-soft);color:var(--ok)}
+.col.miss{background:var(--danger-soft);color:var(--danger)}
+.col.opt{background:var(--warn-soft);color:var(--warn)}
+.notes{font-size:.86rem;border:1px solid var(--line);border-radius:5px;background:var(--sunken)}
+.notes summary{cursor:pointer;padding:7px 10px;font-weight:600;color:var(--warn)}
+.notes ul{margin:0;padding:0 12px 10px 28px;display:grid;gap:3px;color:var(--muted)}
+.error-box{border:1px solid var(--danger);background:var(--danger-soft);color:var(--danger);border-radius:5px;padding:9px 12px;font-size:.88rem}
+.error-box ul{margin:0;padding-left:1.1em;display:grid;gap:3px}
+.error-box p{margin:0 0 4px;font-weight:700}
+
+/* Teil-Wahl */
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line-strong);border-radius:5px;overflow:hidden}
+.seg label{position:relative;cursor:pointer;min-width:0}
+.seg input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.seg span{display:grid;text-align:center;padding:7px 4px;font-weight:600;font-size:.88rem;border-left:1px solid var(--line-strong);height:100%;line-height:1.25}
+.seg label:first-child span{border-left:none}
+.seg small{font-weight:600;font-size:.76rem;opacity:.9}
+.seg small:empty{display:none}
+.seg em{font-style:normal;font-weight:400;font-size:.75rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.seg input:checked+span{background:var(--accent);color:var(--on-accent)}
+.seg input:checked+span em{color:inherit;opacity:.85}
+.seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:-4px}
+
+/* Regeltabelle */
+.rules{border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.rrow{display:grid;grid-template-columns:minmax(0,1fr) 2.9rem 3.4rem 3.4rem;gap:6px;align-items:center;padding:6px 8px}
+.rhead{background:var(--sunken);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-block:7px}
+.rhead span:not(:first-child){text-align:center}
+.fb{border-top:1px solid var(--line)}
+.fb-row .name{display:flex;align-items:flex-start;gap:6px;background:none;border:none;padding:3px 0;color:inherit;font:inherit;font-weight:700;cursor:pointer;text-align:left;min-width:0}
+.fb-row .nm{display:grid;min-width:0;overflow-wrap:anywhere;line-height:1.25}
+.tcount{font-weight:400;font-size:.75rem;color:var(--muted)}
+.chev{flex:none;margin-top:.3em;transition:transform .15s;color:var(--muted)}
+.fb-row .name[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.avail{text-align:center;font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem}
+.rrow input{text-align:center;padding:5px 2px;font-variant-numeric:tabular-nums}
+.themes{background:var(--sunken);border-top:1px dashed var(--line)}
+.theme-row{padding-left:30px}
+.theme-row .name{overflow-wrap:anywhere;font-size:.92rem}
+.rrow input.bad{border-color:var(--danger);background:var(--danger-soft);color:var(--danger)}
+.rrow.off .name,.rrow.off .avail{opacity:.45}
+.total-hint{font-variant-numeric:tabular-nums}
+
+/* Reproduktion */
+.hist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.hist li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.hist .h-id{font-family:var(--font-mono);font-size:.84rem;color:var(--accent)}
+.hist .h-t{font-weight:600;overflow-wrap:anywhere}
+.hist .h-meta{font-size:.8rem;color:var(--muted)}
+.msg{font-size:.88rem;margin:0}
+.msg.ok{color:var(--ok)}.msg.err{color:var(--danger)}.msg.info{color:var(--muted)}
+
+/* Ergebnis */
+.result{min-width:0;display:grid;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;display:grid;gap:16px;min-width:0}
+.res-head{display:flex;flex-wrap:wrap;gap:14px 32px;justify-content:space-between;align-items:flex-start}
+.res-title{min-width:0;flex:1 1 260px}
+.eyebrow{font-size:.74rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.exam-id{font:600 .88rem/1.4 var(--font-mono);letter-spacing:.04em;padding:1px 8px;border:1.5px solid var(--accent);color:var(--accent);border-radius:3px;text-transform:none}
+.res-title h2{font-family:var(--font-paper);font-weight:600;font-size:1.55rem;margin:6px 0 2px;line-height:1.2;text-wrap:balance;overflow-wrap:anywhere}
+.meta{color:var(--muted);margin:0;font-size:.9rem;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;font-size:.75rem;font-weight:700;padding:1px 7px;border-radius:3px;background:var(--warn-soft);color:var(--warn);letter-spacing:.02em}
+.dist{display:grid;gap:7px;flex:1 1 280px;max-width:440px;min-width:0}
+.dist-row{display:grid;grid-template-columns:minmax(0,10rem) minmax(0,1fr) 2.2rem;gap:10px;align-items:center;font-size:.84rem}
+.dist-row .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.dist-row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar{height:8px;background:var(--sunken);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.vbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.vchips{display:flex;flex-wrap:wrap;gap:6px}
+.vchip{font:600 .9rem/1 var(--font-mono);min-width:2.4rem;padding:7px 10px;border:1px solid var(--line-strong);border-radius:4px;background:var(--panel);color:var(--ink);cursor:pointer}
+.vchip:hover{border-color:var(--accent);color:var(--accent)}
+.vchip[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.tabs{display:flex;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin}
+.tab{font:inherit;font-weight:700;background:none;border:none;border-bottom:3px solid transparent;padding:9px 14px 8px;color:var(--muted);cursor:pointer;white-space:nowrap;text-align:left;line-height:1.25}
+.tab small{display:block;font-weight:400;font-size:.76rem;color:var(--muted)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--ink)}
+.export{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.export .field{width:11rem}
+.code-row{display:flex;gap:8px;align-items:stretch}
+.code-row textarea{font-family:var(--font-mono);font-size:.76rem;line-height:1.4;min-height:3.3em;word-break:break-all;background:var(--sunken)}
+.code-row .btn{flex:none}
+@media (max-width:520px){.code-row{flex-direction:column}}
+.empty{padding:28px 18px;text-align:center;color:var(--muted);display:grid;gap:6px;justify-items:center}
+.empty strong{color:var(--ink);font-size:1.05rem}
+
+/* Papier (Vorschau) */
+.paper-wrap{min-width:0}
+.paper{background:var(--paper);color:var(--paper-ink);max-width:210mm;margin:0 auto;padding:50px 58px 60px;box-shadow:var(--shadow);border:1px solid var(--paper-edge);font-family:var(--font-paper);font-size:15.5px;line-height:1.45;min-width:0}
+@media (max-width:640px){.paper{padding:24px 18px 30px;font-size:15px}}
+.paper .ph{border-bottom:1.5px solid var(--paper-ink);padding-bottom:14px;margin-bottom:24px}
+.paper .ph-top{display:flex;justify-content:space-between;gap:4px 14px;flex-wrap:wrap;font-family:var(--font-ui);font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--paper-muted)}
+.paper .ph-id{font-family:var(--font-mono);font-weight:600;letter-spacing:.03em;text-transform:none}
+.paper .ph-head{display:flex;justify-content:space-between;align-items:flex-end;gap:8px 16px;flex-wrap:wrap}
+.paper .ph-var{font-family:var(--font-ui);font-weight:700;font-size:13px;letter-spacing:.04em;border:1.5px solid var(--paper-ink);padding:4px 10px;white-space:nowrap;margin-bottom:4px}
+.paper h1{font-size:27px;margin:8px 0 2px;font-weight:600;line-height:1.15;text-wrap:balance;overflow-wrap:anywhere}
+.paper .ph-sub{margin:0;color:var(--paper-muted)}
+.paper .ph-fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:28px;margin-top:20px;font-family:var(--font-ui);font-size:13px}
+.paper .ph-fields span{display:flex;gap:8px;align-items:flex-end}
+.paper .ph-fields i{flex:1;border-bottom:1px solid var(--paper-ink);height:1.15em}
+.paper .pg{font-family:var(--font-ui);font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:28px 0 12px;padding-bottom:5px;border-bottom:1px solid var(--paper-rule)}
+.paper .pg1{font-size:14px;border-bottom:1.5px solid var(--paper-ink)}
+.paper .pq{display:grid;grid-template-columns:2.1em minmax(0,1fr);gap:0 4px;margin:0 0 20px}
+.paper .pq-no{font-weight:600;font-variant-numeric:tabular-nums}
+.paper .pq-body{min-width:0;display:grid;gap:7px}
+.paper .pq-text,.paper .pa-text{margin:0;white-space:pre-line;overflow-wrap:anywhere}
+.paper .pq-src{font-family:var(--font-ui);font-size:12px;color:var(--paper-muted);white-space:normal}
+.paper .pq-img{margin:2px 0}
+.paper .pq-img img{display:block;max-width:min(100%,28rem);max-height:20rem;width:auto;height:auto;border:1px solid var(--paper-rule);background:#fff}
+.paper .missing{font-family:var(--font-ui);font-size:12px;color:var(--paper-muted);border:1px dashed var(--paper-rule);padding:6px 10px;display:inline-block}
+.paper .pq-choices{list-style:none;margin:0;padding:0;display:grid;gap:3px}
+.paper .pq-choices li{display:grid;grid-template-columns:2.3em minmax(0,1fr);white-space:pre-line;overflow-wrap:anywhere}
+.paper .pq-choices.plain li{grid-template-columns:minmax(0,1fr)}
+.paper .pq-choices .subs{display:grid;margin-top:1px}
+.paper .pq-choices .subs span{display:block;padding-left:1.1em;text-indent:-1.1em}
+.paper .pq-intro{margin:0;white-space:pre-line}
+.paper .pq-choices li.ok{color:var(--paper-pen);font-weight:600}
+.paper .pq-lines{display:grid}
+.paper .pq-lines i{display:block;height:2em;border-bottom:1px solid var(--paper-rule)}
+.paper .pq-sol{border-left:3px solid var(--paper-pen);padding:3px 0 3px 12px;color:var(--paper-pen);display:grid;gap:5px;margin-top:2px}
+.paper .pq-sol b{font-family:var(--font-ui);font-size:11px;letter-spacing:.09em;text-transform:uppercase}
+.paper .pq-sol p{margin:0;white-space:pre-line;overflow-wrap:anywhere}
+.paper .pq-sol .none{font-style:italic;opacity:.8}
+.paper .ph-code{margin-top:30px;padding-top:10px;border-top:1px solid var(--paper-rule);font-family:var(--font-ui);font-size:11px;color:var(--paper-muted);overflow-wrap:anywhere}
+.paper .ph-code code{font-family:var(--font-mono);word-break:break-all}
+
+/* Meldung */
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:10px 16px;border-radius:5px;font-size:.92rem;box-shadow:var(--shadow);max-width:calc(100% - 32px);z-index:30}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media print{
+  body{background:#fff}
+  .top,.controls,.res-head,.tabs,.export,.code-wrap,.dl-note,.toast{display:none!important}
+  .layout{display:block}.card{border:none;padding:0;background:none}
+  .paper{box-shadow:none;border:none;padding:0;max-width:none;background:#fff;color:#000}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>Prüfungsbogen-Generator</h1>
+      <p>Fragen aus dem Excel-Fragenkatalog nach festen Regeln ziehen und als Prüfungsbogen, Lösungsschlüssel und Prüferexemplar ausgeben.</p>
+    </div>
+    <div class="src" id="srcLine"><span class="dot" id="srcDot"></span><span>Datenquelle: <b id="srcName">Beispieldaten</b></span></div>
+  </header>
+
+  <div class="layout">
+    <aside class="controls" aria-label="Einstellungen">
+
+      <section class="step" aria-labelledby="h-file">
+        <h2 id="h-file"><span class="num">1</span>Fragenkatalog</h2>
+        <label class="drop" id="drop">
+          <input type="file" id="fileInput" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12">
+          <strong>Excel-Datei auswählen</strong>
+          <span>oder hierher ziehen · .xlsx oder .xlsm, Bilder dürfen eingebettet sein</span>
+        </label>
+        <div class="file-status" id="fileStatus" aria-live="polite"></div>
+        <div class="field" id="sheetField" hidden>
+          <label class="label" for="sheetSel">Tabellenblatt</label>
+          <select id="sheetSel"></select>
+        </div>
+        <div class="cols" id="colChips" aria-label="Erkannte Spalten"></div>
+        <details class="notes" id="notes" hidden><summary id="notesSum"></summary><ul id="notesList"></ul></details>
+        <p class="hint">Erwartete Spalten: Quelle, Quellen Nr., Frage, Antwort, Auswahlmöglichkeiten, Thema, Fachbereich, Lösung-Bild, Frage-Bild, Teil. Auswahlmöglichkeiten und Bilder dürfen leer sein. <button type="button" class="link" id="templateBtn">Vorlage herunterladen (.xlsx)</button></p>
+      </section>
+
+      <section class="step" aria-labelledby="h-rules">
+        <h2 id="h-rules"><span class="num">2</span>Auswahlregeln</h2>
+        <div class="field">
+          <span class="label" id="teilLbl">Teil</span>
+          <div class="seg" role="radiogroup" aria-labelledby="teilLbl">
+            <label><input type="radio" name="teil" id="teilA" value="A"><span>Nur Teil A<small id="nameA"></small><em id="cntA">0 Fragen</em></span></label>
+            <label><input type="radio" name="teil" id="teilB" value="B"><span>Nur Teil B<small id="nameB"></small><em id="cntB">0 Fragen</em></span></label>
+            <label><input type="radio" name="teil" id="teilMix" value="mix"><span>Gemischt<em id="cntMix">0 Fragen</em></span></label>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label class="label" for="total">Fragen gesamt</label>
+            <input type="number" id="total" min="1" step="1" inputmode="numeric">
+            <span class="hint total-hint" id="totalHint"></span>
+          </div>
+          <div class="field">
+            <label class="label" for="fill">Freie Plätze füllen</label>
+            <select id="fill">
+              <option value="prop">proportional zum Bestand</option>
+              <option value="even">gleichmäßig verteilen</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Mindest- und Höchstanzahl</span>
+          <div class="rules" id="rules"></div>
+          <p class="hint">Leeres Feld heißt keine Grenze. Max 0 schließt einen Fachbereich oder ein Thema aus. Auf einen Fachbereich tippen, um seine Themen einzustellen.</p>
+        </div>
+        <div class="error-box" id="ruleErrors" role="alert" hidden></div>
+      </section>
+
+      <section class="step" aria-labelledby="h-out">
+        <h2 id="h-out"><span class="num">3</span>Ausgabe</h2>
+        <div class="field">
+          <label class="label" for="title">Titel</label>
+          <input type="text" id="title" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="label" for="subtitle">Untertitel / Datum</label>
+          <input type="text" id="subtitle" placeholder="z. B. Klasse ET-24 · 12.11.2026" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="label" for="order">Reihenfolge</label>
+          <select id="order">
+            <option value="random">zufällig gemischt</option>
+            <option value="fach">nach Fachbereich und Thema</option>
+            <option value="teil">nach Teil (A vor B), dann Fachbereich</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" for="variants">Varianten</label>
+          <select id="variants">
+            <option value="1">1 – nur eine Reihenfolge</option><option value="2">2 Varianten</option><option value="3">3 Varianten</option><option value="4">4 Varianten</option><option value="5">5 Varianten</option><option value="6">6 Varianten</option><option value="8">8 Varianten</option><option value="10">10 Varianten</option>
+          </select>
+          <span class="hint">Gleiche Fragen in unterschiedlicher Reihenfolge, etwa für Sitznachbarn. Jede Variante hat eigene Nummern und einen eigenen Lösungsschlüssel. Bei sortierter Reihenfolge bleibt die Gliederung erhalten: Teil A bleibt vor Teil B, gemischt wird innerhalb der Abschnitte.</span>
+        </div>
+        <label class="check"><input type="checkbox" id="optSources"><span>Quellenangaben hinter den Fragen ausgeben (Quelle und Quellen Nr.)</span></label>
+        <label class="check"><input type="checkbox" id="optHeadings"><span>Zwischenüberschriften für Fachbereiche, wenn sortiert</span></label>
+        <label class="check"><input type="checkbox" id="optName"><span>Namens- und Datumsfeld auf dem Prüfungsbogen</span></label>
+        <div class="inline">
+          <label for="optLines">Schreiblinien unter offenen Fragen</label>
+          <select id="optLines"><option>0</option><option>2</option><option>3</option><option>4</option><option>6</option><option>8</option></select>
+        </div>
+        <button type="button" class="btn primary big" id="genBtn">Prüfung erstellen</button>
+        <p class="hint" id="dirtyHint" hidden>Die Auswahlregeln wurden geändert. „Prüfung erstellen“ zieht eine neue Prüfung nach diesen Regeln.</p>
+        <details>
+          <summary class="hint" style="cursor:pointer">Mit festem Startwert erstellen</summary>
+          <div class="field" style="margin-top:10px">
+            <label class="label" for="seedIn">Startwert</label>
+            <div class="code-row"><input type="text" id="seedIn" class="mono" placeholder="z. B. K7M2-Q9XA" autocomplete="off"><button type="button" class="btn" id="seedBtn">Erstellen</button></div>
+            <span class="hint">Gleiche Datei, gleiche Regeln und gleicher Startwert ergeben dieselbe Prüfung.</span>
+          </div>
+        </details>
+      </section>
+
+      <section class="step" aria-labelledby="h-repro">
+        <h2 id="h-repro">Prüfung reproduzieren</h2>
+        <p class="hint">Den Reproduktionscode einer früheren Prüfung einfügen. Die Fragen werden in derselben Reihenfolge aus der geladenen Excel-Datei übernommen, samt allen Einstellungen.</p>
+        <textarea id="codeIn" rows="3" class="mono" placeholder="PB1Z.…" spellcheck="false" aria-label="Reproduktionscode"></textarea>
+        <div class="inline"><button type="button" class="btn" id="codeApply">Prüfung wiederherstellen</button></div>
+        <p class="msg" id="codeMsg" aria-live="polite" hidden></p>
+        <h3>Zuletzt erstellt</h3>
+        <ul class="hist" id="hist"></ul>
+        <p class="hint" id="histEmpty">Erstellte Prüfungen erscheinen hier, in diesem Browser gespeichert.</p>
+      </section>
+    </aside>
+
+    <main class="result" aria-label="Prüfung">
+      <div class="card" id="resultCard">
+        <div class="empty" id="resultEmpty" hidden>
+          <strong>Noch keine Prüfung</strong>
+          <span id="emptyText">Regeln festlegen und „Prüfung erstellen“ wählen.</span>
+        </div>
+        <div id="resultBody" style="display:grid;gap:16px;min-width:0">
+          <div class="res-head">
+            <div class="res-title">
+              <div class="eyebrow">Prüfungs-ID <span class="exam-id" id="examId">····-····</span> <span class="badge" id="sampleBadge" hidden>Beispieldaten</span></div>
+              <h2 id="examTitle">Prüfung wird erstellt …</h2>
+              <p class="meta" id="examMeta"></p>
+            </div>
+            <div class="dist" id="dist" aria-label="Verteilung nach Fachbereich"></div>
+          </div>
+          <div class="vbar" id="vbar" hidden>
+            <span class="label" id="vLbl">Variante</span>
+            <div class="vchips" id="vchips" role="radiogroup" aria-labelledby="vLbl"></div>
+            <span class="hint" id="varHint" hidden></span>
+          </div>
+          <div class="tabs" role="tablist" aria-label="Fassung">
+            <button type="button" class="tab" role="tab" id="tab-qa" data-v="qa" aria-controls="paper" aria-selected="true">Fragen und Antworten<small>Prüferexemplar</small></button>
+            <button type="button" class="tab" role="tab" id="tab-q" data-v="q" aria-controls="paper" aria-selected="false" tabindex="-1">Nur Fragen<small>Prüfungsbogen</small></button>
+            <button type="button" class="tab" role="tab" id="tab-a" data-v="a" aria-controls="paper" aria-selected="false" tabindex="-1">Nur Antworten<small>Lösungsschlüssel</small></button>
+          </div>
+          <div class="export">
+            <div class="field">
+              <label class="label" for="fmt">Format</label>
+              <select id="fmt">
+                <option value="pdf">PDF</option>
+                <option value="docx">Word (.docx)</option>
+                <option value="html">HTML</option>
+              </select>
+            </div>
+            <button type="button" class="btn primary" id="dlOne">Diese Fassung herunterladen</button>
+            <button type="button" class="btn" id="dlZip">Alle drei Fassungen (ZIP)</button>
+            <button type="button" class="btn" id="printBtn" hidden>Drucken</button>
+          </div>
+          <p class="hint dl-note" id="dlNote" hidden></p>
+          <div class="field code-wrap">
+            <label class="label" for="codeOut">Reproduktionscode dieser Prüfung</label>
+            <div class="code-row">
+              <textarea id="codeOut" rows="2" readonly spellcheck="false"></textarea>
+              <button type="button" class="btn" id="copyCode">Kopieren</button>
+            </div>
+            <span class="hint">Steht auch am Ende des Prüferexemplars. Damit lässt sich genau diese Prüfung später wieder erzeugen.</span>
+          </div>
+          <div class="paper-wrap"><article class="paper" id="paper" role="tabpanel" aria-labelledby="tab-qa"></article></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+"use strict";
+
+/* ================= Grundlagen ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const xesc = s => String(s ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const norm = s => String(s ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
+const sum = a => a.reduce((x, y) => x + y, 0);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const fmtDate = ts => new Date(ts).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    s.onload = () => res(); s.onerror = () => rej(new Error('Laden fehlgeschlagen: ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function loadFirst(urls, check) {
+  for (const list of urls) {
+    try { for (const u of list) await loadScript(u); if (check()) return true; } catch {}
+  }
+  return check();
+}
+let jszipP = null;
+function ensureJSZip() {
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  if (!jszipP) jszipP = loadFirst([
+    ['https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'],
+    ['https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js']
+  ], () => !!window.JSZip).then(ok => { if (!ok) { jszipP = null; throw new Error('Die ZIP-Bibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen und erneut versuchen.'); } return window.JSZip; });
+  return jszipP;
+}
+let pdfP = null;
+function ensurePdfMake() {
+  if (window.pdfMake && window.pdfMake.createPdf && window.pdfMake.vfs) return Promise.resolve(window.pdfMake);
+  if (!pdfP) pdfP = loadFirst([
+    ['https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js'],
+    ['https://cdn.jsdelivr.net/npm/pdfmake@0.2.7/build/pdfmake.min.js', 'https://cdn.jsdelivr.net/npm/pdfmake@0.2.7/build/vfs_fonts.js']
+  ], () => !!(window.pdfMake && window.pdfMake.createPdf && window.pdfMake.vfs)).then(ok => { if (!ok) { pdfP = null; throw new Error('Die PDF-Bibliothek konnte nicht geladen werden. Word oder HTML funktionieren ohne sie.'); } return window.pdfMake; });
+  return pdfP;
+}
+
+/* Zufall mit Startwert */
+function cyrb53(str, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+function mulberry32(a) {
+  return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+const rngFrom = seed => mulberry32(cyrb53('pb|' + seed) % 4294967296);
+const tok = s => cyrb53(s).toString(36).padStart(11, '0').slice(-8);
+const SEED_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newSeed() {
+  const a = new Uint32Array(8);
+  try { crypto.getRandomValues(a); } catch { for (let i = 0; i < 8; i++) a[i] = Math.floor(Math.random() * 2 ** 32); }
+  let s = ''; for (let i = 0; i < 8; i++) { s += SEED_ABC[a[i] % SEED_ABC.length]; if (i === 3) s += '-'; }
+  return s;
+}
+function shuffle(a, rng) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function weighted(items, w, rng) { let x = rng() * sum(w); for (let i = 0; i < items.length; i++) { x -= w[i]; if (x < 0) return items[i]; } return items[items.length - 1]; }
+
+/* ================= Excel lesen ================= */
+const COLS = [
+  { key: 'quelle', label: 'Quelle' },
+  { key: 'nr', label: 'Quellen Nr.' },
+  { key: 'frage', label: 'Frage' },
+  { key: 'antwort', label: 'Antwort' },
+  { key: 'choices', label: 'Auswahlmöglichkeiten', optional: true },
+  { key: 'thema', label: 'Thema' },
+  { key: 'fach', label: 'Fachbereich' },
+  { key: 'aimg', label: 'Lösung-Bild', optional: true },
+  { key: 'qimg', label: 'Frage-Bild', optional: true },
+  { key: 'teil', label: 'Teil' }
+];
+const headNorm = s => norm(s).toLowerCase().replace(/[\s_\-]+/g, ' ').replace(/\s*\.\s*$/, '').trim();
+const COL_BY_NORM = new Map(COLS.map(c => [headNorm(c.label), c.key]));
+
+const R_NS = ['http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'http://purl.oclc.org/ooxml/officeDocument/relationships'];
+function rAttr(el, name) {
+  for (const ns of R_NS) { const v = el.getAttributeNS(ns, name); if (v) return v; }
+  for (const a of el.attributes) if (a.localName === name && a.prefix) return a.value;
+  return null;
+}
+const kids = (el, n) => el ? Array.from(el.children).filter(c => c.localName === n) : [];
+const kid = (el, n) => kids(el, n)[0] || null;
+const desc = (el, n) => el ? Array.from(el.getElementsByTagNameNS('*', n)) : [];
+const firstDesc = (el, n) => el ? (el.getElementsByTagNameNS('*', n)[0] || null) : null;
+const unx = s => s.replace(/_x([0-9A-Fa-f]{4})_/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+function hasAncestor(el, local) { for (let p = el.parentElement; p; p = p.parentElement) if (p.localName === local) return true; return false; }
+function resolvePath(dir, target) {
+  const t = String(target).replace(/\\/g, '/');
+  const parts = (t.startsWith('/') ? t.slice(1) : dir + t).split('/');
+  const out = []; for (const p of parts) { if (p === '..') out.pop(); else if (p && p !== '.') out.push(p); }
+  return out.join('/');
+}
+
+class Pkg {
+  constructor(zip) { this.zip = zip; this.lower = new Map(); zip.forEach((p, f) => { if (!f.dir) this.lower.set(p.toLowerCase(), p); }); }
+  file(p) { p = p.replace(/^\/+/, ''); return this.zip.file(p) || (this.lower.has(p.toLowerCase()) ? this.zip.file(this.lower.get(p.toLowerCase())) : null); }
+  async text(p) { const f = this.file(p); return f ? f.async('string') : null; }
+  async xml(p) {
+    const t = await this.text(p); if (t == null) return null;
+    const d = new DOMParser().parseFromString(t, 'application/xml');
+    if (d.getElementsByTagName('parsererror').length) throw new Error('Die Datei enthält einen fehlerhaften Teil (' + p + ').');
+    return d;
+  }
+  async bytes(p) { const f = this.file(p); return f ? f.async('uint8array') : null; }
+  async rels(part) {
+    const i = part.lastIndexOf('/'); const dir = part.slice(0, i + 1);
+    const doc = await this.xml(dir + '_rels/' + part.slice(i + 1) + '.rels');
+    const map = new Map(); if (!doc) return map;
+    for (const r of desc(doc, 'Relationship')) {
+      const ext = r.getAttribute('TargetMode') === 'External';
+      map.set(r.getAttribute('Id'), { type: r.getAttribute('Type') || '', target: ext ? null : resolvePath(dir, r.getAttribute('Target') || '') });
+    }
+    return map;
+  }
+}
+function siText(si) {
+  let s = '';
+  for (const n of si.children) {
+    if (n.localName === 't') s += n.textContent;
+    else if (n.localName === 'r') for (const t of kids(n, 't')) s += t.textContent;
+  }
+  return unx(s);
+}
+function classifyFmt(id, custom) {
+  if (id === 9 || id === 10) return 'pct';
+  if ((id >= 14 && id <= 22) || (id >= 45 && id <= 47)) return 'date';
+  const code = custom.get(id); if (!code) return null;
+  const c = code.replace(/"[^"]*"/g, '').replace(/\\./g, '').replace(/\[[^\]]*\]/g, '');
+  if (/^general$/i.test(c.trim())) return null;
+  if (c.includes('%')) return 'pct';
+  if (/[dmyhs]/i.test(c)) return 'date';
+  return null;
+}
+async function readStyles(pkg, path) {
+  const doc = await pkg.xml(path); if (!doc) return [];
+  const custom = new Map(); for (const nf of desc(doc, 'numFmt')) custom.set(+nf.getAttribute('numFmtId'), nf.getAttribute('formatCode') || '');
+  const xfs = firstDesc(doc, 'cellXfs'); if (!xfs) return [];
+  return kids(xfs, 'xf').map(xf => classifyFmt(+(xf.getAttribute('numFmtId') || 0), custom));
+}
+function fmtNumber(v, kind, d1904) {
+  const n = Number(v); if (!Number.isFinite(n)) return String(v);
+  if (kind === 'pct') return parseFloat((n * 100).toPrecision(12)).toLocaleString('de-DE', { maximumFractionDigits: 6, useGrouping: false }) + ' %';
+  if (kind === 'date') {
+    const d = new Date(Math.round((n + (d1904 ? 1462 : 0)) * 86400000) + Date.UTC(1899, 11, 30));
+    const p = x => String(x).padStart(2, '0');
+    const time = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+    if (n < 1) return time;
+    return `${p(d.getUTCDate())}.${p(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}` + (n % 1 ? ' ' + time : '');
+  }
+  return parseFloat(n.toPrecision(15)).toLocaleString('de-DE', { maximumFractionDigits: 10, useGrouping: false });
+}
+function cellRef(ref) {
+  let c = 0, i = 0;
+  for (; i < ref.length; i++) { const ch = ref.charCodeAt(i); if (ch >= 65 && ch <= 90) c = c * 26 + ch - 64; else if (ch >= 97 && ch <= 122) c = c * 26 + ch - 96; else break; }
+  return { c: c - 1, r: parseInt(ref.slice(i), 10) - 1 };
+}
+const CK = (r, c) => r * 16384 + c;
+
+async function readWorkbook(buf) {
+  const JSZip = await ensureJSZip();
+  let zip;
+  try { zip = await JSZip.loadAsync(buf); }
+  catch { throw new Error('Die Datei ist keine gültige Excel-Datei (.xlsx). Ältere .xls-Dateien bitte in Excel als .xlsx speichern.'); }
+  const pkg = new Pkg(zip);
+  let wbPath = 'xl/workbook.xml';
+  for (const r of (await pkg.rels('')).values()) if (/\/officeDocument$/.test(r.type) && r.target) wbPath = r.target;
+  const wb = await pkg.xml(wbPath);
+  if (!wb) throw new Error('In der Datei wurde keine Excel-Arbeitsmappe gefunden.');
+  const wbRels = await pkg.rels(wbPath);
+  const relOf = re => [...wbRels.values()].find(r => re.test(r.type));
+  const sstDoc = await pkg.xml(relOf(/\/sharedStrings$/)?.target || 'xl/sharedStrings.xml');
+  const sst = sstDoc ? kids(sstDoc.documentElement, 'si').map(siText) : [];
+  const xfFmt = await readStyles(pkg, relOf(/\/styles$/)?.target || 'xl/styles.xml');
+  const wbPr = firstDesc(wb, 'workbookPr');
+  const d1904 = wbPr ? /^(1|true)$/i.test(wbPr.getAttribute('date1904') || '') : false;
+  const sheets = desc(wb, 'sheet').map(s => ({ name: s.getAttribute('name') || 'Tabelle', path: wbRels.get(rAttr(s, 'id'))?.target })).filter(s => s.path);
+  const metaPath = relOf(/\/sheetMetadata$/)?.target || 'xl/metadata.xml';
+  const rich = await readRichImages(pkg, metaPath);
+  const cellImgs = await readCellImages(pkg);
+  return { pkg, sst, xfFmt, d1904, sheets, rich, cellImgs };
+}
+
+/* „Bild in Zelle platzieren“ (Excel 365): metadata.xml → richData → Medien */
+async function readRichImages(pkg, metaPath) {
+  const meta = await pkg.xml(metaPath); if (!meta) return null;
+  const types = desc(meta, 'metadataType').map(t => t.getAttribute('name'));
+  const richIdx = types.indexOf('XLRICHVALUE') + 1; if (!richIdx) return null;
+  const fm = desc(meta, 'futureMetadata').find(f => f.getAttribute('name') === 'XLRICHVALUE');
+  const fmBk = fm ? kids(fm, 'bk').map(bk => { const rvb = firstDesc(bk, 'rvb'); return rvb ? +rvb.getAttribute('i') : null; }) : [];
+  const vmBk = kids(firstDesc(meta, 'valueMetadata'), 'bk').map(bk => { const rc = kids(bk, 'rc').find(x => +x.getAttribute('t') === richIdx); return rc ? +rc.getAttribute('v') : null; });
+  const rvDoc = await pkg.xml('xl/richData/rdrichvalue.xml');
+  const stDoc = await pkg.xml('xl/richData/rdrichvaluestructure.xml');
+  const relPart = pkg.file('xl/richData/richValueRel.xml') ? 'xl/richData/richValueRel.xml' : null;
+  const relDoc = relPart ? await pkg.xml(relPart) : null;
+  if (!rvDoc || !stDoc || !relDoc) return null;
+  const structs = kids(stDoc.documentElement, 's').map(s => kids(s, 'k').map(k => k.getAttribute('n')));
+  const rvs = kids(rvDoc.documentElement, 'rv').map(rv => ({ s: +rv.getAttribute('s'), v: kids(rv, 'v').map(v => v.textContent) }));
+  const relIds = kids(relDoc.documentElement, 'rel').map(r => rAttr(r, 'id'));
+  const relMap = await pkg.rels(relPart);
+  return vm => {
+    const fi = vmBk[vm - 1]; if (fi == null) return null;
+    const ri = fmBk[fi]; if (ri == null) return null;
+    const rv = rvs[ri]; if (!rv) return null;
+    const ki = (structs[rv.s] || []).indexOf('_rvRel:LocalImageIdentifier'); if (ki < 0) return null;
+    const rid = relIds[+rv.v[ki]]; return rid ? (relMap.get(rid)?.target || null) : null;
+  };
+}
+/* WPS-Tabellen: =DISPIMG("ID_…") mit xl/cellimages.xml */
+async function readCellImages(pkg) {
+  const part = 'xl/cellimages.xml'; const doc = await pkg.xml(part); if (!doc) return null;
+  const rels = await pkg.rels(part); const map = new Map();
+  for (const ci of desc(doc, 'cellImage')) {
+    const pr = firstDesc(ci, 'cNvPr'), blip = firstDesc(ci, 'blip');
+    const name = pr?.getAttribute('name'), rid = blip && rAttr(blip, 'embed'), t = rid && rels.get(rid)?.target;
+    if (name && t) map.set(name, t);
+  }
+  return map;
+}
+
+async function readSheet(wbx, sheet) {
+  const doc = await wbx.pkg.xml(sheet.path); if (!doc) return null;
+  const cells = new Map(); let maxR = -1;
+  const sd = firstDesc(doc, 'sheetData'); let rSeq = -1;
+  for (const row of kids(sd, 'row')) {
+    const ra = row.getAttribute('r'); const r = ra ? +ra - 1 : rSeq + 1; rSeq = r;
+    let cSeq = -1;
+    for (const c of kids(row, 'c')) {
+      const ref = c.getAttribute('r'); const ci = ref ? cellRef(ref).c : cSeq + 1; cSeq = ci;
+      const t = c.getAttribute('t'); const vEl = kid(c, 'v'); const v = vEl ? vEl.textContent : null;
+      let text = '';
+      if (t === 's') text = v != null ? (wbx.sst[+v] ?? '') : '';
+      else if (t === 'inlineStr') { const is = kid(c, 'is'); text = is ? siText(is) : ''; }
+      else if (t === 'str') text = v != null ? unx(v) : '';
+      else if (t === 'b') text = v === '1' ? 'WAHR' : v === '0' ? 'FALSCH' : '';
+      else if (t === 'e') text = '';
+      else if (t === 'd') text = v || '';
+      else if (v != null && v !== '') text = fmtNumber(v, wbx.xfFmt[+(c.getAttribute('s') || 0)], wbx.d1904);
+      const vm = +(c.getAttribute('vm') || 0); const fEl = kid(c, 'f'); const f = fEl ? fEl.textContent : '';
+      if (text === '' && !vm && !f) continue;
+      cells.set(CK(r, ci), { v: text, vm, f });
+      if (r > maxR) maxR = r;
+    }
+  }
+  /* verbundene Zellen: Wert nach unten in die Spalte übernehmen (z. B. Fachbereich über mehrere Zeilen) */
+  for (const m of desc(doc, 'mergeCell')) {
+    const [a, b] = (m.getAttribute('ref') || '').split(':'); if (!a || !b) continue;
+    const A = cellRef(a), B = cellRef(b); const src = cells.get(CK(A.r, A.c)); if (!src || !src.v) continue;
+    for (let r = A.r + 1; r <= B.r; r++) if (!cells.has(CK(r, A.c))) cells.set(CK(r, A.c), { v: src.v, vm: 0, f: '', merged: true });
+  }
+  const drawingIds = desc(doc, 'drawing').map(d => rAttr(d, 'id')).filter(Boolean);
+  return { cells, maxR, drawingIds };
+}
+function findHeader(sd) {
+  let best = null;
+  const rows = new Map();
+  for (const [k, cell] of sd.cells) { const r = Math.floor(k / 16384); if (r > 40) continue; if (!rows.has(r)) rows.set(r, []); rows.get(r).push([k % 16384, cell.v]); }
+  for (const [r, list] of rows) {
+    const map = {}; let hits = 0;
+    for (const [c, v] of list) { const key = COL_BY_NORM.get(headNorm(v)); if (key && map[key] == null) { map[key] = c; hits++; } }
+    if (hits >= 3 && map.frage != null && (!best || hits > best.hits)) best = { row: r, map, hits };
+  }
+  return best;
+}
+async function sheetAnchors(wbx, sheet, sd) {
+  const rels = await wbx.pkg.rels(sheet.path); const out = [];
+  for (const id of sd.drawingIds) {
+    const rel = rels.get(id); if (!rel?.target) continue;
+    const ddoc = await wbx.pkg.xml(rel.target); if (!ddoc) continue;
+    const drels = await wbx.pkg.rels(rel.target);
+    const anchors = [...desc(ddoc, 'twoCellAnchor'), ...desc(ddoc, 'oneCellAnchor')].filter(a => !hasAncestor(a, 'Fallback'));
+    for (const an of anchors) {
+      const from = kid(an, 'from'); if (!from) continue;
+      const fc = +(kid(from, 'col')?.textContent || 0), fr = +(kid(from, 'row')?.textContent || 0);
+      const to = kid(an, 'to'); const tc = to ? +(kid(to, 'col')?.textContent || fc) : fc;
+      for (const blip of desc(an, 'blip')) {
+        const rid = rAttr(blip, 'embed'); const t = rid && drels.get(rid)?.target;
+        out.push({ r: fr, c: fc, c2: tc, path: t || null });
+      }
+    }
+  }
+  return out;
+}
+
+const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', jpe: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp', svg: 'image/svg+xml', tif: 'image/tiff', tiff: 'image/tiff', emf: 'image/emf', wmf: 'image/wmf' };
+function imgDims(url) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => rej(new Error('Bild')); im.src = url; }); }
+async function makeImage(key, bytes, ext) {
+  const img = { key, ext, mime: MIME[ext] || 'application/octet-stream', ok: false, w: 0, h: 0, url: null, bytes };
+  if (!bytes) return img;
+  img.blob = new Blob([bytes], { type: img.mime }); img.url = URL.createObjectURL(img.blob);
+  if (ext !== 'emf' && ext !== 'wmf') { try { const d = await imgDims(img.url); img.w = d.w; img.h = d.h; img.ok = d.w > 0; } catch {} }
+  return img;
+}
+
+async function buildData(wbx, sheetIdx, fileName) {
+  const sheet = wbx.sheets[sheetIdx], sd = wbx.sheetData[sheetIdx], hdr = wbx.headers[sheetIdx];
+  const notes = [];
+  const getCell = (r, key) => { const c = hdr.map[key]; return c == null ? null : sd.cells.get(CK(r, c)) || null; };
+  const get = (r, key) => (getCell(r, key)?.v ?? '').trim();
+  const qc = hdr.map.qimg, ac = hdr.map.aimg;
+  const kindOf = c => c != null && c === qc ? 'q' : c != null && c === ac ? 'a' : null;
+  const place = new Map(); const unplaced = []; let linked = 0;
+  const add = (r, kind, path) => { if (!place.has(r)) place.set(r, { q: [], a: [] }); place.get(r)[kind].push(path); };
+  for (const an of await sheetAnchors(wbx, sheet, sd)) {
+    if (!an.path) { linked++; continue; }
+    let kind = kindOf(an.c);
+    for (let c = an.c + 1; !kind && c <= an.c2; c++) kind = kindOf(c);
+    if (!kind || an.r <= hdr.row) { unplaced.push(an.r + 1); continue; }
+    add(an.r, kind, an.path);
+  }
+  for (const [k, cell] of sd.cells) {
+    let path = null;
+    if (cell.vm && wbx.rich) path = wbx.rich(cell.vm);
+    if (!path && cell.f && wbx.cellImgs) { const m = cell.f.match(/DISPIMG\(\s*"([^"]+)"/i); if (m) path = wbx.cellImgs.get(m[1]) || null; }
+    if (!path) continue;
+    const r = Math.floor(k / 16384), kind = kindOf(k % 16384);
+    if (!kind || r <= hdr.row) { unplaced.push(r + 1); continue; }
+    add(r, kind, path);
+  }
+  const imgCache = new Map();
+  const loadImg = path => {
+    if (!imgCache.has(path)) imgCache.set(path, (async () => makeImage(path, await wbx.pkg.bytes(path), (path.split('.').pop() || '').toLowerCase()))());
+    return imgCache.get(path);
+  };
+  const rows = [], skipped = [], oddTeil = [], pending = [], teilNames = {}, teilVotes = {};
+  for (let r = hdr.row + 1; r <= sd.maxR; r++) {
+    const frage = get(r, 'frage');
+    const pl = place.get(r);
+    if (!frage) {
+      const own = COLS.some(c => { const cell = getCell(r, c.key); return cell && cell.v.trim() && !cell.merged; });
+      if (own || pl) skipped.push(r + 1);
+      continue;
+    }
+    const teilRaw = get(r, 'teil');
+    const tm = teilRaw.match(TEIL_RE);
+    if (!tm) oddTeil.push(r + 1);
+    else if (tm[2]) { const L = tm[1].toUpperCase(), nm = norm(tm[2]); const c = teilVotes[L] || (teilVotes[L] = new Map()); c.set(nm, (c.get(nm) || 0) + 1); }
+    const q = {
+      row: r + 1, quelle: get(r, 'quelle'), nr: get(r, 'nr'), frage, antwort: get(r, 'antwort'), choicesRaw: get(r, 'choices'),
+      thema: get(r, 'thema') || '(ohne Thema)', fach: get(r, 'fach') || '(ohne Fachbereich)',
+      teil: tm ? tm[1].toUpperCase() : (teilRaw || '–'), qImgs: [], aImgs: []
+    };
+    if (pl) {
+      pending.push(Promise.all(pl.q.map(loadImg)).then(a => { q.qImgs = a; }));
+      pending.push(Promise.all(pl.a.map(loadImg)).then(a => { q.aImgs = a; }));
+    }
+    rows.push(q);
+  }
+  await Promise.all(pending);
+  for (const [L, c] of Object.entries(teilVotes)) teilNames[L] = [...c.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const imgs = await Promise.all([...imgCache.values()]);
+  const bad = imgs.filter(i => !i.ok);
+
+  for (const c of COLS) if (hdr.map[c.key] == null) notes.push(c.optional ? `Spalte „${c.label}“ fehlt. Sie wird als leer behandelt.` : `Pflichtspalte „${c.label}“ fehlt. Sie wird als leer behandelt.`);
+  if (skipped.length) notes.push(`${skipped.length} Zeile${skipped.length > 1 ? 'n' : ''} ohne Frage übersprungen (Zeile ${listRows(skipped)}).`);
+  if (oddTeil.length) notes.push(`${oddTeil.length} Frage${oddTeil.length > 1 ? 'n haben' : ' hat'} bei „Teil“ weder A noch B (Zeile ${listRows(oddTeil)}). Sie erscheinen nur bei „Gemischt“.`);
+  if (unplaced.length) notes.push(`${unplaced.length} Bild${unplaced.length > 1 ? 'er liegen' : ' liegt'} nicht in den Spalten „Frage-Bild“ oder „Lösung-Bild“ einer Fragezeile und ${unplaced.length > 1 ? 'wurden' : 'wurde'} nicht zugeordnet (Zeile ${listRows(unplaced)}).`);
+  if (linked) notes.push(`${linked} Bild${linked > 1 ? 'er sind' : ' ist'} nur verknüpft statt eingebettet und fehlt deshalb.`);
+  if (bad.length) notes.push(`${bad.length} Bild${bad.length > 1 ? 'er' : ''} im Format ${[...new Set(bad.map(b => b.ext.toUpperCase()))].join(', ')} kann der Browser nicht anzeigen. In der Prüfung steht dort ein Hinweis.`);
+  return finishData({ fileName, isSample: false, sheetName: sheet.name, headerRow: hdr.row + 1, colMap: hdr.map, rows, imgCount: imgs.length, notes, sheetIdx, teilNames });
+}
+/* „Teil A - Gebunden“, „Teil B – Ungebunden“, „A“, „Teil B“ … */
+const TEIL_RE = /^\s*(?:teil\s*)?([ab])(?![a-z0-9äöüß])[\s\-–—:.)]*(.*)$/i;
+const teilName = (d, L) => d && d.teilNames && d.teilNames[L] ? `Teil ${L} – ${d.teilNames[L]}` : 'Teil ' + L;
+function listRows(a) { const u = [...new Set(a)].sort((x, y) => x - y); return u.length > 8 ? u.slice(0, 8).join(', ') + ' …' : u.join(', '); }
+
+function finishData(d) {
+  d.teilNames = d.teilNames || {};
+  const srcCount = new Map();
+  const sk = q => norm(q.quelle).toLowerCase() + '|' + norm(q.nr).toLowerCase();
+  for (const q of d.rows) if (q.quelle && q.nr) srcCount.set(sk(q), (srcCount.get(sk(q)) || 0) + 1);
+  const used = new Set();
+  d.rows.forEach((q, i) => {
+    q.idx = i;
+    q.ftok = tok('f:' + norm(q.frage).toLowerCase());
+    q.stok = q.quelle && q.nr ? tok('s:' + sk(q)) : null;
+    let t = q.stok && srcCount.get(sk(q)) === 1 ? q.stok : q.ftok;
+    if (used.has(t)) t = tok('d:' + q.row + ':' + q.ftok);
+    q.tok = t; used.add(t);
+  });
+  d.fbs = []; const fbMap = new Map();
+  for (const q of d.rows) {
+    let fb = fbMap.get(q.fach);
+    if (!fb) { fb = { name: q.fach, themes: [], tmap: new Map() }; fbMap.set(q.fach, fb); d.fbs.push(fb); }
+    if (!fb.tmap.has(q.thema)) { const th = { name: q.thema, i: fb.themes.length }; fb.tmap.set(q.thema, th); fb.themes.push(th); }
+  }
+  d.fbIndex = new Map(d.fbs.map((f, i) => [f.name, i]));
+  return d;
+}
+function tokenMap(d) {
+  const m = new Map();
+  for (const q of d.rows) for (const t of [q.tok, q.stok, q.ftok, tok('d:' + q.row + ':' + q.ftok)]) if (t && !m.has(t)) m.set(t, q);
+  return m;
+}
+
+/* ================= Auswahlmöglichkeiten und Lösung ================= */
+/* Nummerierung kommt aus der Datei: „1.“, „1)“, „(1)“ oder „1 “, fortlaufend 1, 2, 3 …
+   (alternativ a), b), c) …). Zeilen mit Gedankenstrich und andere Zeilen ohne Nummer
+   gehören zur vorherigen Nummer. Es wird nichts automatisch durchnummeriert. */
+const DASH_RE = /^\s*[-–—‒−•]\s*/;
+function markerOf(ln, kind, next) {
+  if (kind !== 'alpha') {
+    let m = ln.match(/^\s*(\(?)(\d{1,3})\s*([.):])(?!\d)\s*/), bare = false;
+    if (!m) { m = ln.match(/^\s*()(\d{1,3})\s+(?=\S)/); bare = true; }
+    if (m) {
+      const n = +m[2];
+      const ok = kind === 'num' ? n === next : (bare ? n <= 1 : n <= 9);
+      if (ok) return { kind: 'num', next: n + 1, label: m[0].trim(), key: String(n), rest: ln.slice(m[0].length).trim() };
+    }
+  }
+  if (kind !== 'num') {
+    const m = ln.match(/^\s*(\(?)([a-zA-Z])\s*([.)])(?![a-zA-Z0-9])\s*/);
+    if (m) {
+      const c = m[2].toLowerCase().charCodeAt(0);
+      const ok = kind === 'alpha' ? c === next : c === 97;
+      if (ok) return { kind: 'alpha', next: c + 1, label: m[0].trim(), key: m[2].toLowerCase(), rest: ln.slice(m[0].length).trim() };
+    }
+  }
+  return null;
+}
+function splitInline(line) {
+  const re = /(^|\s)\(?(\d{1,3})\s*[.)](?!\d)\s+/g; let m, expect = null; const cuts = [];
+  while ((m = re.exec(line))) { const n = +m[2]; if (expect === null ? n <= 1 : n === expect) { cuts.push(m.index + m[1].length); expect = n + 1; } }
+  if (cuts.length < 2) return null;
+  const parts = []; if (cuts[0] > 0) parts.push(line.slice(0, cuts[0]).trim());
+  cuts.forEach((c, i) => parts.push(line.slice(c, cuts[i + 1] ?? line.length).trim()));
+  return parts.filter(Boolean);
+}
+function parseChoices(raw) {
+  const res = { intro: [], items: [], numbered: false };
+  if (!raw) return res;
+  let lines = String(raw).split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  if (lines.length === 1) { const inl = splitInline(lines[0]); if (inl) lines = inl; }
+  let kind = null, next = null, cur = null;
+  for (const ln of lines) {
+    const m = markerOf(ln, kind, next);
+    if (m) { kind = m.kind; next = m.next; cur = { label: m.label, key: m.key, text: m.rest, subs: [] }; res.items.push(cur); continue; }
+    if (!cur) { res.intro.push(ln); continue; }
+    if (DASH_RE.test(ln) || cur.subs.length) cur.subs.push(ln); else cur.text += (cur.text ? '\n' : '') + ln;
+  }
+  if (res.items.length) { res.numbered = true; return res; }
+  /* keine Nummern in der Zelle: Zeilen so übernehmen, wie sie stehen */
+  if (lines.length === 1 && /[;|]/.test(lines[0])) lines = lines[0].split(/[;|]/).map(x => x.trim()).filter(Boolean);
+  return { intro: [], items: lines.map(t => ({ label: '', key: null, text: t, subs: [] })), numbered: false };
+}
+const fullChoice = c => [c.text, ...c.subs].filter(Boolean).join('\n');
+function solve(answer, choices) {
+  const set = new Set(); let via = null;
+  if (!choices.length || !answer) return { set, via };
+  const a = norm(answer).toLowerCase();
+  choices.forEach((c, i) => { if (norm(c.text).toLowerCase() === a || norm(fullChoice(c)).toLowerCase() === a) set.add(i); });
+  if (set.size) return { set, via: 'text' };
+  const keys = choices.map(c => c.key);
+  if (!keys.some(Boolean)) return { set, via };
+  const m = a.match(/^\(?([a-z]|\d{1,3})\s*[).:](?!\d)\s*\S/);
+  if (m && keys.includes(m[1]) && !/^\d+[.,]\d/.test(a)) { set.add(keys.indexOf(m[1])); return { set, via: 'label' }; }
+  const toks = a.replace(/\bund\b/g, ',').split(/[\s,;/+&]+/).map(t => t.replace(/^\(|[).:]$/g, '')).filter(Boolean);
+  if (toks.length && toks.length <= keys.length && toks.every(t => keys.includes(t))) { toks.forEach(t => set.add(keys.indexOf(t))); via = 'keys'; }
+  return { set, via };
+}
+function answerText(it) {
+  if (it.via === 'keys') return [...it.correct].sort((a, b) => a - b).map(i => `${it.choices[i].label} ${fullChoice(it.choices[i])}`).join('\n');
+  return it.q.antwort;
+}
+function srcText(q) {
+  const p = []; if (q.quelle) p.push('Quelle: ' + q.quelle); if (q.nr) p.push('Nr. ' + q.nr);
+  return p.length ? '(' + p.join(', ') + ')' : '';
+}
+
+/* ================= Regeln und Auswahl ================= */
+const num = v => { if (v === '' || v == null) return null; const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 0 ? n : null; };
+const poolFor = (d, teil) => d.rows.filter(q => teil === 'mix' || q.teil === teil);
+function plan(d, s) {
+  const pool = poolFor(d, s.teil); const errors = [];
+  const fbPlans = d.fbs.map((fb, i) => {
+    const rf = s.rules[fb.name] || {};
+    const fp = { name: fb.name, i, themes: [], avail: 0, min: num(rf.min) ?? 0, max: num(rf.max) };
+    fb.themes.forEach((th, j) => {
+      const rt = rf.themes?.[th.name] || {};
+      const qs = pool.filter(q => q.fach === fb.name && q.thema === th.name);
+      const tp = { name: th.name, j, qs, avail: qs.length, min: num(rt.min) ?? 0, max: num(rt.max) };
+      tp.maxE = Math.min(tp.max ?? Infinity, qs.length);
+      if (tp.max != null && tp.min > tp.max) errors.push({ msg: `${fb.name} › ${th.name}: Min (${tp.min}) ist größer als Max (${tp.max}).`, ids: [`th-${i}-${j}-min`, `th-${i}-${j}-max`] });
+      else if (tp.min > qs.length) errors.push({ msg: `${fb.name} › ${th.name}: Min ${tp.min}, aber nur ${qs.length} passende Frage${qs.length === 1 ? '' : 'n'}.`, ids: [`th-${i}-${j}-min`] });
+      fp.themes.push(tp); fp.avail += qs.length;
+    });
+    const sMin = sum(fp.themes.map(t => t.min)), sMax = sum(fp.themes.map(t => t.maxE));
+    fp.minE = Math.max(fp.min, sMin); fp.maxE = Math.min(fp.max ?? Infinity, sMax);
+    if (fp.max != null && fp.min > fp.max) errors.push({ msg: `${fb.name}: Min (${fp.min}) ist größer als Max (${fp.max}).`, ids: [`fb-${i}-min`, `fb-${i}-max`] });
+    else if (fp.max != null && sMin > fp.max) errors.push({ msg: `${fb.name}: Die Themen verlangen zusammen mindestens ${sMin} Fragen, Max ist ${fp.max}.`, ids: [`fb-${i}-max`] });
+    else if (fp.min > sMax) errors.push({ msg: `${fb.name}: Min ${fp.min}, aber höchstens ${sMax} Fragen möglich.`, ids: [`fb-${i}-min`] });
+    return fp;
+  });
+  const totalMin = sum(fbPlans.map(f => f.minE)), totalMax = sum(fbPlans.map(f => Math.max(0, Math.min(f.maxE, f.avail))));
+  const n = num(s.total);
+  if (!pool.length) errors.push({ msg: 'Für diese Teil-Auswahl gibt es keine Fragen.', ids: [] });
+  else if (n == null || n < 1) errors.push({ msg: 'Bitte die Gesamtzahl der Fragen angeben.', ids: ['total'] });
+  else if (n < totalMin) errors.push({ msg: `Die Mindestwerte verlangen zusammen ${totalMin} Fragen. Die Gesamtzahl ${n} ist zu klein.`, ids: ['total'] });
+  else if (n > totalMax) errors.push({ msg: `Mit diesen Regeln sind höchstens ${totalMax} Fragen möglich. Die Gesamtzahl ${n} ist zu groß.`, ids: ['total'] });
+  return { pool, errors, fbPlans, totalMin, totalMax, n };
+}
+function pickTheme(f, rng, fill) {
+  const el = f.themes.filter(t => t.count < t.maxE && t.rest.length); if (!el.length) return null;
+  if (fill === 'even') { const m = Math.min(...el.map(t => t.count)); const c = el.filter(t => t.count === m); return c[Math.floor(rng() * c.length)]; }
+  return weighted(el, el.map(t => t.rest.length), rng);
+}
+function selectQuestions(p, s, rng) {
+  const fbs = p.fbPlans.map(f => ({ ...f, count: 0, themes: f.themes.map(t => ({ ...t, rest: shuffle(t.qs.slice(), rng), count: 0 })) }));
+  const chosen = [];
+  const take = (f, t) => { chosen.push(t.rest.pop()); t.count++; f.count++; };
+  for (const f of fbs) for (const t of f.themes) while (t.count < t.min && t.rest.length) take(f, t);
+  for (const f of fbs) while (f.count < f.minE) { const t = pickTheme(f, rng, s.fill); if (!t) break; take(f, t); }
+  while (chosen.length < p.n) {
+    const el = fbs.filter(f => f.count < f.maxE && f.themes.some(t => t.count < t.maxE && t.rest.length));
+    if (!el.length) break;
+    let f;
+    if (s.fill === 'even') { const m = Math.min(...el.map(x => x.count)); const c = el.filter(x => x.count === m); f = c[Math.floor(rng() * c.length)]; }
+    else f = weighted(el, el.map(x => sum(x.themes.map(t => t.count < t.maxE ? t.rest.length : 0))), rng);
+    const t = pickTheme(f, rng, s.fill); if (!t) break; take(f, t);
+  }
+  return chosen;
+}
+function orderQuestions(list, order, d, rng) {
+  const out = shuffle(list.slice(), rng);
+  if (order === 'random') return out;
+  const pos = new Map(out.map((q, i) => [q, i]));
+  const tr = q => q.teil === 'A' ? 0 : q.teil === 'B' ? 1 : 2;
+  const thI = q => d.fbs[d.fbIndex.get(q.fach)].tmap.get(q.thema).i;
+  return out.sort((a, b) => (order === 'teil' ? (tr(a) - tr(b) || String(a.teil).localeCompare(String(b.teil), 'de')) : 0)
+    || d.fbIndex.get(a.fach) - d.fbIndex.get(b.fach) || thI(a) - thI(b) || pos.get(a) - pos.get(b));
+}
+
+/* ================= Zustand ================= */
+const DEFAULTS = { teil: 'mix', total: 20, fill: 'prop', rules: {}, title: 'Zwischenprüfung', subtitle: '', order: 'random', sources: true, headings: true, namefield: true, lines: 3, variants: 1, fmt: 'pdf' };
+const S = Object.assign({}, DEFAULTS, store.get('pb.settings', {}));
+if (!S.rules || typeof S.rules !== 'object') S.rules = {};
+const state = { data: null, exam: null, view: 'qa', variant: 1, code: '', openFb: new Set(), pendingCode: null, lastPlan: null };
+const saveSettings = () => store.set('pb.settings', S);
+const selOf = s => ({ teil: s.teil, total: s.total, fill: s.fill, order: s.order, rules: JSON.parse(JSON.stringify(s.rules)) });
+const sigOf = s => JSON.stringify([s.teil, String(s.total), s.fill, s.order, compactRules(s.rules)]);
+function compactRules(rules) {
+  const out = {};
+  for (const [fb, rf] of Object.entries(rules || {})) {
+    const th = {};
+    for (const [t, rt] of Object.entries(rf.themes || {})) { const a = num(rt.min), b = num(rt.max); if (a != null || b != null) th[t] = [a, b]; }
+    const a = num(rf.min), b = num(rf.max);
+    if (a != null || b != null || Object.keys(th).length) out[fb] = Object.keys(th).length ? [a, b, th] : [a, b];
+  }
+  return out;
+}
+function expandRules(c) {
+  const out = {};
+  for (const [fb, arr] of Object.entries(c || {})) {
+    const rf = { min: arr[0] ?? '', max: arr[1] ?? '', themes: {} };
+    for (const [t, v] of Object.entries(arr[2] || {})) rf.themes[t] = { min: v[0] ?? '', max: v[1] ?? '' };
+    out[fb] = rf;
+  }
+  return out;
+}
+
+/* ================= Erstellen ================= */
+function generate(seed, { record = false } = {}) {
+  const d = state.data; if (!d) return false;
+  const p = plan(d, S); renderValidation(p);
+  if (p.errors.length) { if (!state.exam) renderResult(); return false; }
+  const rng = rngFrom(seed);
+  const chosen = selectQuestions(p, S, rng);
+  const items = orderQuestions(chosen, S.order, d, rng);
+  state.exam = { id: seed, created: Date.now(), items, sel: selOf(S), sig: sigOf(S), restored: false }; state.variant = 1;
+  renderResult(); markDirty();
+  updateCode().then(() => { if (record) pushHistory(); });
+  return true;
+}
+
+/* ================= Dokumentmodell für alle Formate ================= */
+const varTxt = m => m.variants > 1 ? ' · Variante ' + m.variant : '';
+const footTxt = (m, v) => `${m.title} · ${VARIANTS[v].label}${varTxt(m)} · ${m.id}`;
+const VARIANTS = {
+  qa: { label: 'Fragen und Antworten', kind: 'Prüferexemplar', file: 'Fragen-und-Antworten' },
+  q: { label: 'Nur Fragen', kind: 'Prüfungsbogen', file: 'Fragen' },
+  a: { label: 'Nur Antworten', kind: 'Lösungsschlüssel', file: 'Antworten' }
+};
+/* Variante k: dieselben Fragen, neu gemischt (bei sortierter Reihenfolge nur innerhalb der Abschnitte).
+   Abgeleitet aus Prüfungs-ID und Variantennummer, daher reproduzierbar. */
+function variantItems(e, k) {
+  if (k <= 1) return e.items;
+  if (!e.vcache) e.vcache = new Map();
+  const mode = e.sel.order === 'teil' && !S.headings ? 'teil' : e.sel.order === 'teil' ? 'teilfach' : e.sel.order;
+  const ck = k + '|' + mode;
+  if (e.vcache.has(ck)) return e.vcache.get(ck);
+  const sig = list => list.map(q => q.tok).join('');
+  const seen = new Set([sig(e.items)]);
+  for (let j = 2; j < k; j++) seen.add(sig(variantItems(e, j)));
+  const key = mode === 'random' ? () => '' : mode === 'teil' ? q => q.teil : mode === 'teilfach' ? q => q.teil + '\u0000' + q.fach : q => q.fach;
+  const rng = rngFrom(e.id + '|V' + k); let out = e.items;
+  for (let t = 0; t < 25; t++) {
+    out = []; let i = 0; const base = e.items;
+    while (i < base.length) { let j = i; const kk = key(base[i]); while (j < base.length && key(base[j]) === kk) j++; out.push(...shuffle(base.slice(i, j), rng)); i = j; }
+    if (!seen.has(sig(out))) break;
+  }
+  e.vcache.set(ck, out); return out;
+}
+function duplicateVariants(e, nv) {
+  const seen = new Map(), dup = [];
+  for (let k = 1; k <= nv; k++) { const s = variantItems(e, k).map(q => q.tok).join(''); if (seen.has(s)) dup.push([k, seen.get(s)]); else seen.set(s, k); }
+  return dup;
+}
+function buildModel(k = state.variant) {
+  const e = state.exam; const items = []; let lastFb = null, lastTeil = null, no = 0;
+  const nv = Math.max(1, +S.variants || 1); k = Math.min(Math.max(1, k), nv);
+  const grouped = S.headings && e.sel.order !== 'random';
+  for (const q of variantItems(e, k)) {
+    if (grouped) {
+      if (e.sel.order === 'teil' && q.teil !== lastTeil) { items.push({ type: 'h', level: 1, text: q.teil === '–' ? 'Ohne Teil' : q.teil === 'A' || q.teil === 'B' ? teilName(state.data, q.teil) : /^teil\b/i.test(q.teil) || q.teil.length > 3 ? q.teil : 'Teil ' + q.teil }); lastTeil = q.teil; lastFb = null; }
+      if (q.fach !== lastFb) { items.push({ type: 'h', level: 2, text: q.fach }); lastFb = q.fach; }
+    }
+    const pc = parseChoices(q.choicesRaw); const choices = pc.items; const sol = solve(q.antwort, choices);
+    items.push({ type: 'q', no: ++no, q, choices, intro: pc.intro, numbered: pc.numbered, correct: sol.set, via: sol.via, src: srcText(q) });
+  }
+  return { variant: k, variants: nv, title: norm(S.title) || 'Prüfung', subtitle: norm(S.subtitle), id: e.id, namefield: S.namefield, lines: +S.lines || 0, sources: S.sources, items, code: state.code, count: no };
+}
+function imgsHtml(imgs, src) {
+  return (imgs || []).map(im => im.ok
+    ? `<figure class="pq-img"><img src="${esc(src(im))}" alt="" width="${im.w}" height="${im.h}"></figure>`
+    : `<figure class="pq-img"><span class="missing">Bild (${esc(im.ext.toUpperCase() || '?')}) kann hier nicht angezeigt werden</span></figure>`).join('');
+}
+function paperHtml(m, v, src) {
+  const o = [];
+  o.push(`<header class="ph"><div class="ph-top"><span>${VARIANTS[v].kind}${m.variants > 1 ? ' · Variante ' + m.variant : ''}</span><span class="ph-id">Prüfungs-ID ${esc(m.id)}</span></div><div class="ph-head"><h1>${esc(m.title)}</h1>${m.variants > 1 ? `<span class="ph-var">Variante ${m.variant}</span>` : ''}</div>${m.subtitle ? `<p class="ph-sub">${esc(m.subtitle)}</p>` : ''}${v === 'q' && m.namefield ? '<div class="ph-fields"><span>Name <i></i></span><span>Datum <i></i></span></div>' : ''}</header>`);
+  for (const it of m.items) {
+    if (it.type === 'h') { o.push(`<h2 class="pg pg${it.level}">${esc(it.text)}</h2>`); continue; }
+    const q = it.q; const sh = m.sources && it.src ? ` <span class="pq-src">${esc(it.src)}</span>` : '';
+    let b = '';
+    if (v === 'a') {
+      const at = answerText(it);
+      b = `<p class="pa-text">${at ? esc(at) : '<i>keine Antwort hinterlegt</i>'}${sh}</p>` + imgsHtml(q.aImgs, src);
+    } else {
+      b = `<p class="pq-text">${esc(q.frage)}${sh}</p>` + imgsHtml(q.qImgs, src);
+      if (it.intro.length) b += `<p class="pq-intro">${esc(it.intro.join('\n'))}</p>`;
+      if (it.choices.length) b += `<ul class="pq-choices${it.numbered ? '' : ' plain'}">${it.choices.map((c, i) => `<li${v === 'qa' && it.correct.has(i) ? ' class="ok"' : ''}>${it.numbered ? `<span class="lbl">${esc(c.label)}</span>` : ''}<span>${esc(c.text)}${c.subs.length ? `<span class="subs">${c.subs.map(x => `<span>${esc(x)}</span>`).join('')}</span>` : ''}</span></li>`).join('')}</ul>`;
+      else if (v === 'q' && m.lines > 0) b += `<div class="pq-lines" aria-hidden="true">${'<i></i>'.repeat(m.lines)}</div>`;
+      if (v === 'qa') { const at = answerText(it); b += `<div class="pq-sol"><b>Lösung</b>${at ? `<p>${esc(at)}</p>` : '<p class="none">keine Antwort hinterlegt</p>'}${imgsHtml(q.aImgs, src)}</div>`; }
+    }
+    o.push(`<section class="pq"><div class="pq-no">${it.no}.</div><div class="pq-body">${b}</div></section>`);
+  }
+  if (v === 'qa' && m.code) o.push(`<footer class="ph-code">Reproduktionscode (im Prüfungsbogen-Generator unter „Prüfung reproduzieren“ einfügen):<br><code>${esc(m.code)}</code></footer>`);
+  return o.join('');
+}
+
+/* ================= Darstellung ================= */
+function renderSource() {
+  const d = state.data;
+  $('#srcName').textContent = d ? (d.isSample ? 'Beispieldaten' : d.fileName) : '–';
+  $('#srcDot').classList.toggle('user', !!d && !d.isSample);
+}
+function renderFileStatus(busy) {
+  const box = $('#fileStatus'); const d = state.data;
+  if (busy) { box.innerHTML = `<span class="busy">${esc(busy)}</span>`; return; }
+  if (!d) { box.innerHTML = ''; return; }
+  const withImg = d.rows.filter(q => q.qImgs.length || q.aImgs.length).length;
+  box.innerHTML = d.isSample
+    ? `<div class="file-name">Beispieldaten · ${d.rows.length} Fragen</div><p class="hint">Zum Ausprobieren mit erfundenen Fragen. Laden Sie Ihre Excel-Datei, um mit Ihrem Fragenkatalog zu arbeiten.</p>${state.hasStored ? '<div class="file-actions"><button type="button" class="link" id="reloadStored">Zuletzt verwendete Datei laden</button></div>' : ''}`
+    : `<div class="file-name">${esc(d.fileName)}</div><div class="stats"><span><b>${d.rows.length}</b> Fragen</span><span><b>${d.imgCount}</b> Bilder in <b>${withImg}</b> Fragen</span><span>Blatt „${esc(d.sheetName)}“, Kopfzeile ${d.headerRow}</span></div><div class="file-actions"><button type="button" class="link" id="showSample">Beispieldaten anzeigen</button><button type="button" class="link" id="forgetFile">Datei in diesem Browser vergessen</button></div>`;
+  const chips = $('#colChips');
+  chips.innerHTML = COLS.map(c => {
+    const found = d.isSample || d.colMap[c.key] != null;
+    return `<span class="col${found ? '' : c.optional ? ' opt' : ' miss'}">${found ? '✓' : '✕'} ${esc(c.label)}</span>`;
+  }).join('');
+  const notes = d.notes || [];
+  $('#notes').hidden = !notes.length;
+  $('#notesSum').textContent = notes.length === 1 ? '1 Hinweis zur Datei' : `${notes.length} Hinweise zur Datei`;
+  $('#notesList').innerHTML = notes.map(n => `<li>${esc(n)}</li>`).join('');
+  const sf = $('#sheetField');
+  if (!d.isSample && d.candidates && d.candidates.length > 1) {
+    sf.hidden = false;
+    $('#sheetSel').innerHTML = d.candidates.map(i => `<option value="${i}"${i === d.sheetIdx ? ' selected' : ''}>${esc(d.wbx.sheets[i].name)}</option>`).join('');
+  } else sf.hidden = true;
+}
+const CHEV = '<svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function numInput(id, val, label) { return `<input type="number" id="${id}" min="0" step="1" inputmode="numeric" value="${esc(val ?? '')}" placeholder="–" aria-label="${esc(label)}">`; }
+function renderRules() {
+  const d = state.data; const box = $('#rules'); if (!d) { box.innerHTML = ''; return; }
+  const pool = poolFor(d, S.teil); const cnt = new Map();
+  for (const q of pool) { cnt.set(q.fach, (cnt.get(q.fach) || 0) + 1); const k = q.fach + '\u0000' + q.thema; cnt.set(k, (cnt.get(k) || 0) + 1); }
+  let h = '<div class="rrow rhead"><span>Fachbereich / Thema</span><span>verf.</span><span>Min</span><span>Max</span></div>';
+  d.fbs.forEach((fb, i) => {
+    const rf = S.rules[fb.name] || {}; const open = state.openFb.has(fb.name);
+    h += `<div class="fb"><div class="rrow fb-row" id="fbrow-${i}"><button type="button" class="name" data-fb="${i}" aria-expanded="${open}" aria-controls="th-${i}">${CHEV}<span class="nm">${esc(fb.name)}<span class="tcount">${fb.themes.length} ${fb.themes.length === 1 ? 'Thema' : 'Themen'}</span></span></button><span class="avail">${cnt.get(fb.name) || 0}</span>${numInput(`fb-${i}-min`, rf.min, `Mindestanzahl ${fb.name}`)}${numInput(`fb-${i}-max`, rf.max, `Höchstanzahl ${fb.name}`)}</div><div class="themes" id="th-${i}"${open ? '' : ' hidden'}>`;
+    fb.themes.forEach((th, j) => {
+      const rt = rf.themes?.[th.name] || {};
+      h += `<div class="rrow theme-row" id="throw-${i}-${j}"><span class="name">${esc(th.name)}</span><span class="avail">${cnt.get(fb.name + '\u0000' + th.name) || 0}</span>${numInput(`th-${i}-${j}-min`, rt.min, `Mindestanzahl ${th.name}`)}${numInput(`th-${i}-${j}-max`, rt.max, `Höchstanzahl ${th.name}`)}</div>`;
+    });
+    h += '</div></div>';
+  });
+  box.innerHTML = h;
+  const c = t => d.rows.filter(q => t === 'mix' || q.teil === t).length;
+  const lab = n => `${n} ${n === 1 ? 'Frage' : 'Fragen'}`;
+  $('#cntA').textContent = lab(c('A')); $('#cntB').textContent = lab(c('B')); $('#cntMix').textContent = lab(c('mix'));
+  $('#nameA').textContent = d.teilNames.A || ''; $('#nameB').textContent = d.teilNames.B || '';
+}
+function renderValidation(p) {
+  p = p || plan(state.data, S); state.lastPlan = p;
+  $$('#rules input.bad, #total.bad').forEach(el => el.classList.remove('bad'));
+  $$('#rules .rrow.off').forEach(el => el.classList.remove('off'));
+  for (const f of p.fbPlans) {
+    if (f.max === 0) $('#fbrow-' + f.i)?.classList.add('off');
+    for (const t of f.themes) if (t.max === 0) $(`#throw-${f.i}-${t.j}`)?.classList.add('off');
+  }
+  for (const e of p.errors) for (const id of e.ids) document.getElementById(id)?.classList.add('bad');
+  const box = $('#ruleErrors');
+  box.hidden = !p.errors.length;
+  box.innerHTML = p.errors.length ? `<p>So lässt sich keine Prüfung erstellen:</p><ul>${p.errors.map(e => `<li>${esc(e.msg)}</li>`).join('')}</ul>` : '';
+  $('#totalHint').textContent = p.pool.length ? (p.totalMin <= p.totalMax ? `möglich: ${Math.max(1, p.totalMin)} bis ${p.totalMax}` : 'Regeln widersprechen sich') : '';
+}
+function markDirty() { $('#dirtyHint').hidden = !(state.exam && state.exam.sig !== sigOf(S)); }
+
+function renderResult() {
+  const e = state.exam, d = state.data;
+  $('#resultEmpty').hidden = !!e; $('#resultBody').hidden = !e;
+  if (!e) {
+    $('#emptyText').textContent = state.lastPlan && state.lastPlan.errors.length ? 'Mit den aktuellen Regeln lässt sich keine Prüfung erstellen. Die Gründe stehen unter „Auswahlregeln“.' : 'Regeln festlegen und „Prüfung erstellen“ wählen.';
+    return;
+  }
+  $('#examId').textContent = e.id;
+  $('#examTitle').textContent = norm(S.title) || 'Prüfung';
+  $('#sampleBadge').hidden = !d.isSample;
+  const nA = e.items.filter(q => q.teil === 'A').length, nB = e.items.filter(q => q.teil === 'B').length;
+  const teilTxt = e.sel.teil === 'mix' ? `gemischt (A ${nA} · B ${nB})` : 'nur ' + teilName(d, e.sel.teil);
+  const nv = +S.variants || 1;
+  $('#examMeta').textContent = `${e.items.length} Fragen · ${teilTxt}${nv > 1 ? ` · ${nv} Varianten` : ''} · ${e.restored ? 'wiederhergestellt' : 'erstellt'} ${fmtDate(e.created)}`;
+  const byFb = new Map(); for (const q of e.items) byFb.set(q.fach, (byFb.get(q.fach) || 0) + 1);
+  const max = Math.max(1, ...byFb.values());
+  $('#dist').innerHTML = d.fbs.filter(f => byFb.has(f.name)).map(f => {
+    const n = byFb.get(f.name);
+    const th = f.themes.map(t => [t.name, e.items.filter(q => q.fach === f.name && q.thema === t.name).length]).filter(x => x[1]).map(x => `${x[0]}: ${x[1]}`).join(', ');
+    return `<div class="dist-row" title="${esc(th)}"><span class="nm">${esc(f.name)}</span><span class="bar"><i style="width:${(n / max * 100).toFixed(1)}%"></i></span><span class="n">${n}</span></div>`;
+  }).join('');
+  renderPaper();
+}
+function renderPaper() {
+  if (!state.exam) return;
+  const m = buildModel();
+  const paper = $('#paper');
+  paper.innerHTML = paperHtml(m, state.view, im => im.url);
+  state.variant = m.variant;
+  $('#vbar').hidden = m.variants < 2;
+  $('#vchips').innerHTML = m.variants < 2 ? '' : Array.from({ length: m.variants }, (_, i) => `<button type="button" class="vchip" role="radio" data-var="${i + 1}" aria-checked="${i + 1 === m.variant}" tabindex="${i + 1 === m.variant ? 0 : -1}">${i + 1}</button>`).join('');
+  const dup = m.variants > 1 ? duplicateVariants(state.exam, m.variants) : [];
+  $('#varHint').hidden = !dup.length;
+  $('#varHint').textContent = dup.length ? `Mit dieser Sortierung gibt es nicht genug verschiedene Reihenfolgen: ${dup.map(([a, b]) => `Variante ${a} gleicht Variante ${b}`).join(', ')}. Mehr Abwechslung bringt „zufällig gemischt“${state.exam.sel.order === 'teil' && S.headings ? ' oder das Ausschalten der Zwischenüberschriften' : ''}.` : '';
+  $('#dlZip').textContent = m.variants > 1 ? `Alle ${m.variants * 3} Dateien (ZIP)` : 'Alle drei Fassungen (ZIP)';
+  paper.setAttribute('aria-labelledby', 'tab-' + state.view);
+  $$('.tab').forEach(t => { const on = t.dataset.v === state.view; t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1; });
+}
+
+/* ================= Reproduktionscode ================= */
+function b64url(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function unb64url(str) { const s = str.replace(/-/g, '+').replace(/_/g, '/'); const bin = atob(s + '==='.slice((s.length + 3) % 4)); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+async function pipeBytes(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
+async function encodeCode(obj) {
+  const raw = new TextEncoder().encode(JSON.stringify(obj));
+  if (typeof CompressionStream === 'function') { try { return 'PB1Z.' + b64url(await pipeBytes(raw, new CompressionStream('deflate-raw'))); } catch {} }
+  return 'PB1.' + b64url(raw);
+}
+async function decodeCode(str) {
+  const s = String(str || '').replace(/\s+/g, '');
+  const m = s.match(/(PB1Z?)\.([A-Za-z0-9_-]+)/);
+  if (!m) throw new Error('Das ist kein gültiger Reproduktionscode. Er beginnt mit „PB1“.');
+  let bytes;
+  try { bytes = unb64url(m[2]); } catch { throw new Error('Der Code ist beschädigt. Bitte vollständig kopieren.'); }
+  if (m[1] === 'PB1Z') {
+    if (typeof DecompressionStream !== 'function') throw new Error('Dieser Browser kann den Code nicht entpacken. Bitte einen aktuellen Browser verwenden.');
+    try { bytes = await pipeBytes(bytes, new DecompressionStream('deflate-raw')); } catch { throw new Error('Der Code ist unvollständig oder beschädigt.'); }
+  }
+  let obj; try { obj = JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new Error('Der Code ist unvollständig oder beschädigt.'); }
+  if (!obj || obj.v !== 1 || typeof obj.q !== 'string') throw new Error('Dieser Code stammt aus einer unbekannten Version.');
+  return obj;
+}
+async function updateCode() {
+  const e = state.exam; if (!e) { state.code = ''; $('#codeOut').value = ''; return; }
+  const obj = { v: 1, id: e.id, ts: e.created, f: state.data.isSample ? '' : state.data.fileName, t: S.title, st: S.subtitle, p: e.sel.teil, n: num(e.sel.total), fl: e.sel.fill, o: e.sel.order, r: compactRules(e.sel.rules), src: S.sources ? 1 : 0, h: S.headings ? 1 : 0, nf: S.namefield ? 1 : 0, l: +S.lines || 0, vc: Math.max(1, +S.variants || 1), q: e.items.map(q => q.tok).join('') };
+  const code = await encodeCode(obj);
+  if (state.exam !== e) return;
+  state.code = code; $('#codeOut').value = code;
+  if (state.view === 'qa') renderPaper();
+  updateHistoryEntry();
+}
+function codeMsg(text, kind) { const el = $('#codeMsg'); el.hidden = !text; el.textContent = text || ''; el.className = 'msg ' + (kind || 'info'); }
+async function applyCode(str, { silent = false } = {}) {
+  let obj;
+  try { obj = await decodeCode(str); } catch (err) { codeMsg(err.message, 'err'); return false; }
+  const d = state.data;
+  const map = tokenMap(d); const toks = obj.q.match(/.{8}/g) || [];
+  const items = [], missing = [];
+  toks.forEach((t, i) => { const q = map.get(t); if (q && !items.includes(q)) items.push(q); else missing.push(i + 1); });
+  if (!items.length) {
+    state.pendingCode = str;
+    codeMsg(obj.f ? `Keine Frage aus diesem Code ist in den geladenen Daten. Laden Sie „${obj.f}“. Die Prüfung ${obj.id} wird danach automatisch wiederhergestellt.` : `Keine Frage aus diesem Code ist in den geladenen Daten. Laden Sie die Excel-Datei, aus der die Prüfung ${obj.id} stammt.`, 'err');
+    return false;
+  }
+  state.pendingCode = null;
+  Object.assign(S, { teil: obj.p || 'mix', total: obj.n ?? items.length, fill: obj.fl || 'prop', order: obj.o || 'random', rules: expandRules(obj.r), title: obj.t ?? S.title, subtitle: obj.st ?? '', sources: !!obj.src, headings: !!obj.h, namefield: !!obj.nf, lines: obj.l ?? 3, variants: obj.vc || 1 });
+  state.variant = 1;
+  saveSettings(); syncInputs(); renderRules(); renderValidation();
+  state.exam = { id: obj.id, created: obj.ts || Date.now(), items, sel: selOf(S), sig: sigOf(S), restored: true };
+  renderResult(); markDirty();
+  await updateCode();
+  pushHistory();
+  let msg = `Prüfung ${obj.id} wiederhergestellt: ${items.length} Fragen.`;
+  if (missing.length) msg += ` ${missing.length} Frage${missing.length > 1 ? 'n' : ''} (Position ${listRows(missing)}) ${missing.length > 1 ? 'fehlen' : 'fehlt'} in der geladenen Datei.`;
+  if (obj.f && !d.isSample && obj.f !== d.fileName) msg += ` Der Code stammt aus „${obj.f}“.`;
+  codeMsg(msg, missing.length ? 'err' : 'ok');
+  if (!silent) scrollToResult();
+  return true;
+}
+
+/* Verlauf (nur in diesem Browser) */
+function history() { const h = store.get('pb.history', []); return Array.isArray(h) ? h : []; }
+function pushHistory() {
+  const e = state.exam; if (!e || !state.code) return;
+  const h = history().filter(x => x.id !== e.id);
+  h.unshift({ id: e.id, t: norm(S.title) || 'Prüfung', ts: e.created, n: e.items.length, p: e.sel.teil, f: state.data.isSample ? 'Beispieldaten' : state.data.fileName, code: state.code });
+  store.set('pb.history', h.slice(0, 15)); renderHistory();
+}
+function updateHistoryEntry() {
+  const e = state.exam; if (!e) return;
+  const h = history(); const x = h.find(y => y.id === e.id); if (!x) return;
+  x.code = state.code; x.t = norm(S.title) || 'Prüfung'; store.set('pb.history', h); renderHistory();
+}
+function renderHistory() {
+  const h = history();
+  $('#histEmpty').hidden = !!h.length;
+  $('#hist').innerHTML = h.map((x, i) => `<li><div><div><span class="h-id">${esc(x.id)}</span> · <span class="h-t">${esc(x.t)}</span></div><div class="h-meta">${x.n} Fragen · ${x.p === 'mix' ? 'gemischt' : 'Teil ' + esc(x.p)} · ${esc(fmtDate(x.ts))} · ${esc(x.f)}</div></div><button type="button" class="btn" data-hist="${i}">Öffnen</button></li>`).join('');
+}
+
+/* ================= Bilder für den Export ================= */
+const rasterCache = new Map();
+function blobToDataUrl(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); }); }
+function loadEl(url) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('Bild')); im.src = url; }); }
+async function raster(im, forPdf) {
+  const key = im.key + (forPdf ? '|pdf' : '');
+  if (rasterCache.has(key)) return rasterCache.get(key);
+  const p = (async () => {
+    const isJpg = ['jpg', 'jpeg', 'jpe'].includes(im.ext);
+    if (isJpg || (im.ext === 'png' && !forPdf)) return { bytes: im.bytes, ext: isJpg ? 'jpeg' : 'png', w: im.w, h: im.h, dataUrl: await blobToDataUrl(im.blob) };
+    const el = await loadEl(im.url);
+    const scale = im.ext === 'svg' ? 3 : Math.min(1, 2400 / Math.max(im.w, im.h));
+    const cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(im.w * scale)); cv.height = Math.max(1, Math.round(im.h * scale));
+    cv.getContext('2d').drawImage(el, 0, 0, cv.width, cv.height);
+    const blob = await new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('Bild')), 'image/png'));
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), ext: 'png', w: im.w, h: im.h, dataUrl: await blobToDataUrl(blob) };
+  })();
+  rasterCache.set(key, p); return p;
+}
+
+/* ================= Export: HTML ================= */
+const EXPORT_CSS = `@page{size:A4;margin:18mm 18mm 20mm}
+*{box-sizing:border-box}body{margin:0;background:#eceff3;color:#15181f;font-family:"Source Serif 4",Georgia,"Times New Roman",serif;font-size:11.5pt;line-height:1.45}
+.paper{background:#fff;max-width:210mm;margin:24px auto;padding:18mm;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+@media print{body{background:#fff}.paper{margin:0;padding:0;box-shadow:none;max-width:none}}
+.ph{border-bottom:1.5px solid #15181f;padding-bottom:12px;margin-bottom:22px}
+.ph-top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#5d6370}
+.ph-id{font-family:"Courier New",monospace;letter-spacing:.02em;text-transform:none}
+.ph-head{display:flex;justify-content:space-between;align-items:flex-end;gap:8px 16px}
+.ph-var{font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:10pt;border:1.5px solid #15181f;padding:3px 9px;white-space:nowrap;margin-bottom:4px}
+h1{font-size:20pt;margin:6px 0 2px;font-weight:600;line-height:1.15}
+.ph-sub{margin:0;color:#5d6370}
+.ph-fields{display:grid;grid-template-columns:2fr 1fr;gap:28px;margin-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:10pt}
+.ph-fields span{display:flex;gap:8px;align-items:flex-end}.ph-fields i{flex:1;border-bottom:1px solid #15181f;height:1.15em}
+.pg{font-family:Arial,Helvetica,sans-serif;font-size:9.5pt;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:24px 0 10px;padding-bottom:4px;border-bottom:1px solid #c2c8d2;break-after:avoid}
+.pg1{font-size:10.5pt;border-bottom:1.5px solid #15181f}
+.pq{display:grid;grid-template-columns:2.1em minmax(0,1fr);gap:0 4px;margin:0 0 16px;break-inside:avoid}
+.pq-no{font-weight:600}.pq-body{min-width:0;display:grid;gap:6px}
+.pq-text,.pa-text{margin:0;white-space:pre-line}
+.pq-src{font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;color:#5d6370;white-space:normal}
+.pq-img{margin:2px 0}.pq-img img{display:block;max-width:min(100%,120mm);max-height:85mm;width:auto;height:auto}
+.missing{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#5d6370;border:1px dashed #c2c8d2;padding:4px 8px;display:inline-block}
+.pq-choices{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.pq-choices li{display:grid;grid-template-columns:2.3em minmax(0,1fr);white-space:pre-line}
+.pq-choices.plain li{grid-template-columns:minmax(0,1fr)}
+.pq-choices .subs{display:grid}.pq-choices .subs span{display:block;padding-left:1.1em;text-indent:-1.1em}
+.pq-intro{margin:0;white-space:pre-line}
+.pq-choices li.ok{color:#b42318;font-weight:600}
+.pq-lines i{display:block;height:2em;border-bottom:1px solid #b9bfca}
+.pq-sol{border-left:3px solid #b42318;padding:2px 0 2px 10px;color:#b42318;display:grid;gap:4px}
+.pq-sol b{font-family:Arial,Helvetica,sans-serif;font-size:8pt;letter-spacing:.09em;text-transform:uppercase}
+.pq-sol p{margin:0;white-space:pre-line}.pq-sol .none{font-style:italic}
+.ph-code{margin-top:28px;padding-top:8px;border-top:1px solid #c2c8d2;font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#5d6370}
+.ph-code code{font-family:"Courier New",monospace;word-break:break-all}`;
+async function buildHtml(m, v) {
+  const urls = new Map();
+  for (const it of m.items) if (it.type === 'q') for (const im of [...it.q.qImgs, ...it.q.aImgs]) if (im.ok && !urls.has(im.key)) urls.set(im.key, await blobToDataUrl(im.blob));
+  const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(m.title)} – ${VARIANTS[v].label}${esc(varTxt(m))} – ${esc(m.id)}</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap"><style>${EXPORT_CSS}</style></head><body><main class="paper">${paperHtml(m, v, im => urls.get(im.key))}</main></body></html>`;
+  return new Blob([html], { type: 'text/html;charset=utf-8' });
+}
+
+/* ================= Export: Word (.docx) ================= */
+const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+function wrun(text, o = {}) {
+  const pr = (o.font ? `<w:rFonts w:ascii="${o.font}" w:hAnsi="${o.font}" w:cs="${o.font}"/>` : '') + (o.b ? '<w:b/><w:bCs/>' : '') + (o.i ? '<w:i/><w:iCs/>' : '') + (o.caps ? '<w:caps/>' : '') + (o.color ? `<w:color w:val="${o.color}"/>` : '') + (o.spacing ? `<w:spacing w:val="${o.spacing}"/>` : '') + (o.sz ? `<w:sz w:val="${o.sz}"/><w:szCs w:val="${o.sz}"/>` : '');
+  const rPr = pr ? `<w:rPr>${pr}</w:rPr>` : '';
+  return String(text ?? '').split(/\r?\n/).map((ln, i) => `<w:r>${rPr}${i ? '<w:br/>' : ''}<w:t xml:space="preserve">${xesc(ln)}</w:t></w:r>`).join('');
+}
+const wtab = () => '<w:r><w:tab/></w:r>';
+function wpara(runs, o = {}) {
+  const p = [];
+  if (o.style) p.push(`<w:pStyle w:val="${o.style}"/>`);
+  if (o.keepNext) p.push('<w:keepNext/>');
+  if (o.border) p.push(o.border);
+  if (o.tabs) p.push(`<w:tabs>${o.tabs}</w:tabs>`);
+  if (o.before != null || o.after != null) p.push(`<w:spacing${o.before != null ? ` w:before="${o.before}"` : ''}${o.after != null ? ` w:after="${o.after}"` : ''}/>`);
+  if (o.ind != null) p.push(`<w:ind w:left="${o.ind}"${o.hanging ? ` w:hanging="${o.hanging}"` : ''}/>`);
+  return `<w:p>${p.length ? `<w:pPr>${p.join('')}</w:pPr>` : ''}${runs}</w:p>`;
+}
+async function buildDocx(m, v) {
+  const JSZip = await ensureJSZip();
+  const RED = 'B42318', GREY = '5F6573', TW = 9638;
+  const media = [], rel = new Map(); let pid = 1;
+  async function imgPara(im, ind, keepNext) {
+    const kn = keepNext ? '<w:keepNext/>' : '';
+    if (!im.ok) return `<w:p><w:pPr>${kn}<w:ind w:left="${ind}"/></w:pPr>${wrun(`[Bild im Format ${im.ext.toUpperCase()} – bitte aus der Excel-Datei übernehmen]`, { i: true, color: GREY, sz: 18 })}</w:p>`;
+    let r = rel.get(im.key);
+    if (!r) { const ras = await raster(im, false); const name = `image${media.length + 1}.${ras.ext}`; media.push({ name, bytes: ras.bytes }); r = { rid: 'rIdImg' + media.length, name, w: ras.w, h: ras.h }; rel.set(im.key, r); }
+    let cx = r.w * 9525, cy = r.h * 9525; const k = Math.min(1, 4680000 / cx, 3240000 / cy); cx = Math.round(cx * k); cy = Math.round(cy * k);
+    const id = pid++;
+    return `<w:p><w:pPr>${kn}<w:spacing w:before="60" w:after="60"/><w:ind w:left="${ind}"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${id}" name="Bild ${id}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="${r.name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${r.rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  }
+  const body = [];
+  body.push(wpara(wrun(VARIANTS[v].kind + (m.variants > 1 ? '  ·  Variante ' + m.variant : '') + '  ·  Prüfungs-ID ' + m.id, { caps: true, sz: 16, color: GREY, spacing: 12 }), { after: 60 }));
+  body.push(wpara(wrun(m.title) + (m.variants > 1 ? wtab() + wrun('Variante ' + m.variant, { sz: 26 }) : ''), { style: 'Title', tabs: `<w:tab w:val="right" w:pos="${TW}"/>` }));
+  if (m.subtitle) body.push(wpara(wrun(m.subtitle), { style: 'Subtitle' }));
+  if (v === 'q' && m.namefield) body.push(wpara(wrun('Name ') + wtab() + wrun('     Datum ') + wtab(), { tabs: `<w:tab w:val="left" w:leader="underscore" w:pos="6000"/><w:tab w:val="right" w:leader="underscore" w:pos="${TW}"/>`, before: 280, after: 60 }));
+  body.push(wpara('', { border: '<w:pBdr><w:bottom w:val="single" w:sz="10" w:space="1" w:color="15181F"/></w:pBdr>', after: 280 }));
+  const QI = { ind: 454, hanging: 454, tabs: '<w:tab w:val="left" w:pos="454"/>' };
+  for (const it of m.items) {
+    if (it.type === 'h') { body.push(wpara(wrun(it.text), { style: it.level === 1 ? 'Heading1' : 'Heading2' })); continue; }
+    const q = it.q; const src = m.sources && it.src ? wrun(' ' + it.src, { sz: 18, color: GREY }) : '';
+    const blk = [];
+    const P = (runs, o) => blk.push({ runs, o });
+    const I = (im, ind) => blk.push({ im, ind });
+    if (v === 'a') {
+      const at = answerText(it);
+      P(wrun(it.no + '.', { b: true }) + wtab() + (at ? wrun(at) : wrun('keine Antwort hinterlegt', { i: true, color: GREY })) + src, QI);
+      q.aImgs.forEach(im => I(im, 454));
+    } else {
+      P(wrun(it.no + '.', { b: true }) + wtab() + wrun(q.frage) + src, QI);
+      q.qImgs.forEach(im => I(im, 454));
+      if (it.intro.length) P(wrun(it.intro.join('\n')), { ind: 454, before: 20, after: 20 });
+      it.choices.forEach((c, i) => {
+        const ok = v === 'qa' && it.correct.has(i); const st = ok ? { b: true, color: RED } : {};
+        if (it.numbered) P(wrun(c.label, st) + wtab() + wrun(c.text, st), { ind: 1021, hanging: 567, tabs: '<w:tab w:val="left" w:pos="1021"/>', before: 20, after: 20 });
+        else P(wrun(c.text, st), { ind: 454, before: 20, after: 20 });
+        for (const x of c.subs) { const dm = x.match(DASH_RE); P(dm ? wrun(x.slice(0, dm[0].length).trim(), st) + wtab() + wrun(x.slice(dm[0].length), st) : wrun(x, st), { ind: it.numbered ? 1304 : 737, hanging: dm ? 283 : 0, tabs: `<w:tab w:val="left" w:pos="${it.numbered ? 1304 : 737}"/>`, before: 0, after: 10 }); }
+      });
+      if (v === 'q' && !it.choices.length) for (let i = 0; i < m.lines; i++) P(wtab(), { ind: 454, tabs: `<w:tab w:val="right" w:leader="underscore" w:pos="${TW}"/>`, before: 220, after: 0 });
+      if (v === 'qa') {
+        const at = answerText(it);
+        P(wrun('Lösung: ', { b: true, color: RED }) + (at ? wrun(at, { color: RED }) : wrun('keine Antwort hinterlegt', { i: true, color: RED })), { ind: 454, before: 80, border: `<w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="${RED}"/></w:pBdr>` });
+        q.aImgs.forEach(im => I(im, 454));
+      }
+    }
+    for (let i = 0; i < blk.length; i++) {
+      const b = blk[i], last = i === blk.length - 1;
+      if (b.im) body.push(await imgPara(b.im, b.ind, !last));
+      else body.push(wpara(b.runs, { ...b.o, keepNext: !last, after: last ? 220 : (b.o.after ?? 40) }));
+    }
+  }
+  if (v === 'qa' && m.code) {
+    body.push(wpara(wrun('Reproduktionscode (im Prüfungsbogen-Generator unter „Prüfung reproduzieren“ einfügen):', { sz: 15, color: GREY }), { before: 480, after: 20, border: '<w:pBdr><w:top w:val="single" w:sz="4" w:space="6" w:color="C2C8D2"/></w:pBdr>' }));
+    body.push(wpara(wrun(m.code, { sz: 14, color: GREY, font: 'Consolas' }), { after: 0 }));
+  }
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document ${W_NS} xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${body.join('')}<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const fld = instr => `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${instr} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+  const footer = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${W_NS}><w:p><w:pPr><w:pStyle w:val="Footer"/></w:pPr>${wrun(footTxt(m, v))}${wtab()}${wrun('Seite ')}${fld('PAGE')}${wrun(' von ')}${fld('NUMPAGES')}</w:p></w:ftr>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W_NS}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="de-DE" w:eastAsia="de-DE" w:bidi="ar-SA"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>`
+    + `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>`
+    + `<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="40"/></w:pPr><w:rPr><w:b/><w:bCs/><w:sz w:val="40"/><w:szCs w:val="40"/></w:rPr></w:style>`
+    + `<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:rPr><w:color w:val="${GREY}"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:style>`
+    + `<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="10" w:space="2" w:color="15181F"/></w:pBdr><w:spacing w:before="360" w:after="160"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:bCs/><w:caps/><w:spacing w:val="10"/><w:sz w:val="26"/><w:szCs w:val="26"/></w:rPr></w:style>`
+    + `<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="C2C8D2"/></w:pBdr><w:spacing w:before="280" w:after="140"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:bCs/><w:caps/><w:spacing w:val="10"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style>`
+    + `<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:tabs><w:tab w:val="right" w:pos="${TW}"/></w:tabs><w:spacing w:after="0"/></w:pPr><w:rPr><w:color w:val="${GREY}"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:style></w:styles>`;
+  const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`);
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`);
+  zip.file('docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xesc(m.title + ' – ' + VARIANTS[v].label + varTxt(m))}</dc:title><dc:creator>Prüfungsbogen-Generator</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`);
+  zip.file('word/document.xml', doc);
+  zip.file('word/styles.xml', styles);
+  zip.file('word/footer1.xml', footer);
+  zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>${[...rel.values()].map(r => `<Relationship Id="${r.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${r.name}"/>`).join('')}</Relationships>`);
+  for (const f of media) zip.file('word/media/' + f.name, f.bytes);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
+}
+
+/* ================= Export: PDF (pdfmake) ================= */
+async function buildPdf(m, v) {
+  const pm = await ensurePdfMake();
+  const W = 595.28 - 2 * 56, NUMW = 24, BODYW = W - NUMW - 4;
+  const RED = '#b42318', GREY = '#5f6573';
+  const pimg = async (im, maxW) => {
+    if (!im.ok) return { text: `[Bild im Format ${im.ext.toUpperCase()} – bitte aus der Excel-Datei übernehmen]`, italics: true, color: GREY, fontSize: 8.5, margin: [0, 2, 0, 2] };
+    const r = await raster(im, true);
+    let w = r.w * 0.75, h = r.h * 0.75; const k = Math.min(1, maxW / w, 250 / h); w *= k; h *= k;
+    return { image: r.dataUrl, width: w, height: h, margin: [0, 3, 0, 4] };
+  };
+  const st = (base, ok) => ok ? Object.assign(base, { bold: true, color: RED }) : base;
+  const content = [];
+  content.push({ columns: [{ text: (VARIANTS[v].kind + varTxt(m)).toUpperCase(), fontSize: 8, bold: true, color: GREY, characterSpacing: 0.8 }, { text: 'Prüfungs-ID ' + m.id, fontSize: 8, color: GREY, alignment: 'right' }] });
+  if (m.variants > 1) content.push({ columns: [{ width: '*', text: m.title, fontSize: 20, bold: true }, { width: 'auto', table: { body: [[{ text: 'Variante ' + m.variant, bold: true, fontSize: 11, margin: [4, 1, 4, 1] }]] }, layout: { hLineWidth: () => 1.2, vLineWidth: () => 1.2, hLineColor: () => '#15181f', vLineColor: () => '#15181f' } }], columnGap: 12, margin: [0, 6, 0, 2] });
+  else content.push({ text: m.title, fontSize: 20, bold: true, margin: [0, 6, 0, 2] });
+  if (m.subtitle) content.push({ text: m.subtitle, fontSize: 11, color: GREY });
+  if (v === 'q' && m.namefield) content.push({
+    table: { widths: ['auto', '*', 24, 'auto', 120], body: [[{ text: 'Name', fontSize: 10 }, { text: ' ', border: [false, false, false, true] }, { text: '' }, { text: 'Datum', fontSize: 10 }, { text: ' ', border: [false, false, false, true] }]] },
+    layout: { defaultBorder: false, hLineWidth: () => 0.8, vLineWidth: () => 0, hLineColor: () => '#15181f', paddingLeft: () => 0, paddingRight: () => 6, paddingTop: () => 6, paddingBottom: () => 2 },
+    margin: [0, 14, 0, 0]
+  });
+  content.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: W, y2: 0, lineWidth: 1.2, lineColor: '#15181f' }], margin: [0, 12, 0, 16] });
+  for (const it of m.items) {
+    if (it.type === 'h') {
+      content.push({ stack: [{ text: it.text.toUpperCase(), bold: true, fontSize: it.level === 1 ? 10.5 : 9.5, characterSpacing: 0.6 }, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: W, y2: 0, lineWidth: it.level === 1 ? 1.2 : 0.6, lineColor: it.level === 1 ? '#15181f' : '#c2c8d2' }], margin: [0, 3, 0, 0] }], margin: [0, 12, 0, 10], unbreakable: true });
+      continue;
+    }
+    const q = it.q; const stack = [];
+    const srcRun = m.sources && it.src ? [{ text: ' ' + it.src, fontSize: 8.5, color: GREY }] : [];
+    let hasImg = false;
+    if (v === 'a') {
+      const at = answerText(it);
+      stack.push({ text: [at ? { text: at } : { text: 'keine Antwort hinterlegt', italics: true, color: GREY }, ...srcRun] });
+      for (const im of q.aImgs) { stack.push(await pimg(im, BODYW)); hasImg = true; }
+    } else {
+      stack.push({ text: [{ text: q.frage }, ...srcRun] });
+      for (const im of q.qImgs) { stack.push(await pimg(im, BODYW)); hasImg = true; }
+      if (it.intro.length) stack.push({ text: it.intro.join('\n'), margin: [0, 2, 0, 0] });
+      if (it.choices.length) stack.push({ stack: it.choices.map((c, i) => {
+        const ok = v === 'qa' && it.correct.has(i);
+        const body = [st({ text: c.text }, ok), ...c.subs.map(x => { const dm = x.match(DASH_RE); return dm ? { columns: [st({ width: 10, text: x.slice(0, dm[0].length).trim() }, ok), st({ width: '*', text: x.slice(dm[0].length) }, ok)], columnGap: 2, margin: [6, 1, 0, 0] } : st({ text: x, margin: [6, 1, 0, 0] }, ok); })];
+        return it.numbered ? { columns: [st({ width: 24, text: c.label }, ok), { width: '*', stack: body }], columnGap: 2, margin: [0, 2, 0, 0] } : { stack: body, margin: [0, 2, 0, 0] };
+      }), margin: [0, 3, 0, 0] });
+      else if (v === 'q' && m.lines > 0) stack.push({ stack: Array.from({ length: m.lines }, () => ({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: BODYW, y2: 0, lineWidth: 0.5, lineColor: '#9aa0aa' }], margin: [0, 19, 0, 0] })) });
+      if (v === 'qa') {
+        const at = answerText(it);
+        const sol = [{ text: [{ text: 'LÖSUNG   ', bold: true, fontSize: 7.5, characterSpacing: 0.6 }, at ? { text: at } : { text: 'keine Antwort hinterlegt', italics: true }], color: RED }];
+        for (const im of q.aImgs) { sol.push(await pimg(im, BODYW - 12)); hasImg = true; }
+        stack.push({ table: { widths: ['*'], body: [[{ stack: sol }]] }, layout: { vLineWidth: i => i === 0 ? 2 : 0, hLineWidth: () => 0, vLineColor: () => RED, paddingLeft: () => 9, paddingRight: () => 0, paddingTop: () => 2, paddingBottom: () => 2 }, margin: [0, 5, 0, 0] });
+      }
+    }
+    const small = (q.frage.length + q.antwort.length + q.choicesRaw.length) < 1400 && it.choices.length < 12;
+    content.push({ columns: [{ width: NUMW, text: it.no + '.', bold: true }, { width: '*', stack }], columnGap: 4, margin: [0, 0, 0, 12], unbreakable: !hasImg && small });
+  }
+  if (v === 'qa' && m.code) {
+    content.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: W, y2: 0, lineWidth: 0.5, lineColor: '#c2c8d2' }], margin: [0, 18, 0, 6] });
+    content.push({ text: 'Reproduktionscode (im Prüfungsbogen-Generator unter „Prüfung reproduzieren“ einfügen):', fontSize: 7.5, color: GREY });
+    content.push({ text: (m.code.match(/.{1,92}/g) || []).join('\n'), fontSize: 6.5, color: GREY, margin: [0, 2, 0, 0] });
+  }
+  const dd = {
+    pageSize: 'A4', pageMargins: [56, 52, 56, 56],
+    info: { title: `${m.title} – ${VARIANTS[v].label}${varTxt(m)}`, creator: 'Prüfungsbogen-Generator', subject: 'Prüfungs-ID ' + m.id },
+    defaultStyle: { font: 'Roboto', fontSize: 10.5, lineHeight: 1.22, color: '#15181f' },
+    footer: (cur, total) => ({ columns: [{ text: footTxt(m, v), fontSize: 7.5, color: GREY }, { text: `Seite ${cur} von ${total}`, fontSize: 7.5, color: GREY, alignment: 'right', width: 90 }], margin: [56, 20, 56, 0] }),
+    content
+  };
+  if (!pm.fonts || !pm.fonts.Roboto) pm.fonts = Object.assign({}, pm.fonts, { Roboto: { normal: 'Roboto-Regular.ttf', bold: 'Roboto-Medium.ttf', italics: 'Roboto-Italic.ttf', bolditalics: 'Roboto-MediumItalic.ttf' } });
+  const doc = pm.createPdf(dd);
+  return new Promise((res, rej) => {
+    try { const r = doc.getBlob(b => res(b)); if (r && typeof r.then === 'function') r.then(res, rej); }
+    catch (e) { rej(e); }
+  });
+}
+
+/* ================= Vorlage (.xlsx) ================= */
+async function buildTemplate() {
+  const JSZip = await ensureJSZip();
+  const L = i => String.fromCharCode(65 + i);
+  const cell = (ref, t, s) => t === '' ? '' : `<c r="${ref}" t="inlineStr" s="${s}"><is><t xml:space="preserve">${xesc(t)}</t></is></c>`;
+  const row = (r, arr, s) => `<row r="${r}">${arr.map((t, i) => cell(L(i) + r, t, s)).join('')}</row>`;
+  const ex = [
+    ['Übungsband Elektrotechnik', '3', 'Welche Einheit hat der elektrische Widerstand?', '3', '1. Volt\n2. Ampere\n– Einheit der Stromstärke\n3. Ohm\n4. Watt', 'Ohmsches Gesetz', 'Elektrotechnik', '', '', 'Teil A - Gebunden'],
+    ['Übungsband Elektrotechnik', '14', 'Ein Widerstand von 47 Ω liegt an 12 V. Wie groß ist der Strom?', 'I = U / R = 12 V / 47 Ω ≈ 0,26 A', '', 'Ohmsches Gesetz', 'Elektrotechnik', '', '', 'Teil B - Ungebunden']
+  ];
+  const widths = [26, 12, 52, 36, 28, 22, 20, 16, 16, 8];
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${row(1, COLS.map(c => c.label), 1)}${ex.map((e, i) => row(i + 2, e, 2)).join('')}</sheetData></worksheet>`;
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`);
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
+  zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Fragen" sheetId="1" r:id="rId1"/></sheets></workbook>`);
+  zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  zip.file('xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Standard" xfId="0" builtinId="0"/></cellStyles></styleSheet>`);
+  zip.file('xl/worksheets/sheet1.xml', sheet);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', compression: 'DEFLATE' });
+}
+
+/* ================= Speichern ================= */
+let dlP = null;
+function downloads() {
+  if (!dlP) dlP = (window.claude && typeof window.claude.use === 'function') ? window.claude.use('downloads').catch(() => null) : Promise.resolve(undefined);
+  return dlP;
+}
+const SAVE_MSG = {
+  declined: 'Speichern abgebrochen.',
+  rate_limited: 'Es ist bereits ein Speicherdialog offen. Bitte kurz warten.',
+  rejected_extension: 'Dieses Dateiformat kann hier nicht gespeichert werden.',
+  extension_not_enabled: 'Dieses Dateiformat ist in dieser Ansicht nicht verfügbar.',
+  too_large: 'Die Datei ist zu groß für diese Ansicht.'
+};
+async function saveFile(name, blob) {
+  const d = await downloads();
+  if (d === undefined) {
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000); toast(`„${name}“ wird heruntergeladen.`); return;
+  }
+  if (!d) { toast('Herunterladen ist in dieser Ansicht nicht verfügbar.'); return; }
+  try { const r = await d.save({ filename: name, data: blob }); if (r && r.status === 'saved') toast(`„${name}“ gespeichert.`); }
+  catch (e) { toast(SAVE_MSG[e && e.code] || 'Die Datei konnte nicht gespeichert werden.'); }
+}
+const slug = s => (norm(s) || 'Pruefung').replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'Pruefung';
+const EXT = { pdf: 'pdf', docx: 'docx', html: 'html' };
+const fileBase = m => `${slug(m.title)}_${m.id}`;
+const fileName = (m, v, fmt) => `${fileBase(m)}${m.variants > 1 ? '_V' + m.variant : ''}_${VARIANTS[v].file}.${EXT[fmt]}`;
+const buildFile = (m, v, fmt) => fmt === 'pdf' ? buildPdf(m, v) : fmt === 'docx' ? buildDocx(m, v) : buildHtml(m, v);
+async function withBusy(btn, label, fn) {
+  const old = btn.textContent; btn.disabled = true; btn.textContent = label;
+  try { await fn(); } catch (e) { console.error(e); toast(e && e.message ? e.message : 'Der Export ist fehlgeschlagen.'); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+
+/* ================= Meldungen ================= */
+let toastT = 0;
+function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 4200); }
+function scrollToResult() { if (matchMedia('(max-width: 1079px)').matches) $('#resultCard').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }
+
+/* ================= Gespeicherte Datei (IndexedDB, nur dieser Browser) ================= */
+const idb = {
+  open() { return new Promise((res, rej) => { try { const r = indexedDB.open('pruefungsbogen', 1); r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); },
+  async get(k) { try { const db = await this.open(); return await new Promise(res => { const q = db.transaction('files').objectStore('files').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch { return null; } },
+  async put(k, v) { try { const db = await this.open(); await new Promise(res => { const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').put(v, k); tx.oncomplete = tx.onerror = tx.onabort = () => res(); }); } catch {} },
+  async del(k) { try { const db = await this.open(); await new Promise(res => { const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').delete(k); tx.oncomplete = tx.onerror = tx.onabort = () => res(); }); } catch {} }
+};
+
+/* ================= Laden ================= */
+function setData(d, { auto = true } = {}) {
+  const old = state.data;
+  if (old && old.wbx && (!d.wbx || d.wbx !== old.wbx)) for (const q of old.rows) for (const im of [...q.qImgs, ...q.aImgs]) if (im.url) URL.revokeObjectURL(im.url);
+  rasterCache.clear();
+  state.data = d; state.exam = null; state.variant = 1;
+  renderSource(); renderFileStatus(); renderRules();
+  let p = plan(d, S);
+  if (p.errors.length && p.errors.every(e => e.ids.length === 1 && e.ids[0] === 'total') && p.totalMax >= Math.max(1, p.totalMin)) {
+    S.total = Math.max(1, Math.min(num(S.total) ?? 20, p.totalMax)); if (S.total < p.totalMin) S.total = p.totalMin;
+    $('#total').value = S.total; saveSettings(); p = plan(d, S);
+  }
+  renderValidation(p);
+  if (state.pendingCode) { const c = state.pendingCode; applyCode(c, { silent: true }).then(ok => { if (!ok && auto) generate(newSeed()); }); return; }
+  if (auto) generate(newSeed()); else renderResult();
+}
+async function loadBuffer(buf, name) {
+  const wbx = await readWorkbook(buf);
+  wbx.sheetData = []; wbx.headers = [];
+  for (const sh of wbx.sheets) { const sd = await readSheet(wbx, sh); wbx.sheetData.push(sd); wbx.headers.push(sd ? findHeader(sd) : null); }
+  const candidates = wbx.headers.map((h, i) => h ? i : -1).filter(i => i >= 0);
+  if (!candidates.length) throw new Error('In keinem Tabellenblatt wurde eine Kopfzeile mit den Spalten Quelle, Quellen Nr., Frage, Antwort, Thema, Fachbereich und Teil gefunden. Die Spaltennamen müssen genau so lauten. Die Vorlage zeigt den Aufbau.');
+  const d = await buildData(wbx, candidates[0], name);
+  d.wbx = wbx; d.candidates = candidates;
+  if (!d.rows.length) throw new Error('Die Kopfzeile wurde gefunden, aber darunter stehen keine Fragen.');
+  return d;
+}
+async function loadFile(file) {
+  if (!file) return;
+  if (!/\.(xlsx|xlsm)$/i.test(file.name)) { showFileError(/\.xls$/i.test(file.name) ? 'Das alte .xls-Format wird nicht unterstützt. Bitte die Datei in Excel als .xlsx speichern.' : 'Bitte eine Excel-Datei im Format .xlsx oder .xlsm wählen.'); return; }
+  renderFileStatus('„' + file.name + '“ wird gelesen …');
+  try {
+    const buf = await file.arrayBuffer();
+    const d = await loadBuffer(buf, file.name);
+    setData(d);
+    if (buf.byteLength < 80 * 1024 * 1024) { await idb.put('last', { name: file.name, buf, ts: Date.now() }); state.hasStored = true; }
+    toast(`${d.rows.length} Fragen aus „${file.name}“ geladen.`);
+  } catch (e) { console.error(e); showFileError(e.message || 'Die Datei konnte nicht gelesen werden.'); }
+}
+function showFileError(msg) {
+  renderFileStatus();
+  $('#fileStatus').insertAdjacentHTML('afterbegin', `<div class="error-box" role="alert">${esc(msg)}</div>`);
+}
+
+/* ================= Beispieldaten ================= */
+const SVG = {
+  reihe: `<svg xmlns="http://www.w3.org/2000/svg" width="460" height="180" viewBox="0 0 460 180" font-family="Arial, Helvetica, sans-serif" font-size="14"><rect width="460" height="180" fill="#fff"/><g fill="none" stroke="#111" stroke-width="2"><path d="M60 50 H110 M170 50 H210 M270 50 H310 M370 50 H410 V140 H60 V104 M60 86 V50"/><rect x="110" y="38" width="60" height="24"/><rect x="210" y="38" width="60" height="24"/><rect x="310" y="38" width="60" height="24"/><path d="M40 86 H80" stroke-width="2.5"/><path d="M50 104 H70" stroke-width="5"/></g><g fill="#111"><text x="140" y="28" text-anchor="middle">R1 = 100 Ω</text><text x="240" y="28" text-anchor="middle">R2 = 220 Ω</text><text x="340" y="28" text-anchor="middle">R3 = 330 Ω</text><text x="20" y="100" text-anchor="middle">U</text><text x="88" y="84">+</text></g></svg>`,
+  teiler: `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="260" viewBox="0 0 300 260" font-family="Arial, Helvetica, sans-serif" font-size="14"><rect width="300" height="260" fill="#fff"/><g fill="none" stroke="#111" stroke-width="2"><path d="M60 30 H150 V50 M150 110 V140 M150 200 V230 H60"/><path d="M150 125 H240 M150 230 H240"/><rect x="138" y="50" width="24" height="60"/><rect x="138" y="140" width="24" height="60"/><circle cx="60" cy="30" r="4" fill="#fff"/><circle cx="60" cy="230" r="4" fill="#fff"/><circle cx="240" cy="125" r="4" fill="#fff"/><circle cx="240" cy="230" r="4" fill="#fff"/><path d="M40 40 V220 M34 210 L40 222 L46 210" stroke="#b42318"/><path d="M262 135 V220 M256 210 L262 222 L268 210" stroke="#b42318"/></g><g fill="#111"><text x="172" y="86">R1</text><text x="172" y="176">R2</text><text x="22" y="136" fill="#b42318">U</text><text x="270" y="182" fill="#b42318">U2</text></g></svg>`,
+  sigma: `<svg xmlns="http://www.w3.org/2000/svg" width="440" height="280" viewBox="0 0 440 280" font-family="Arial, Helvetica, sans-serif" font-size="12"><rect width="440" height="280" fill="#fff"/><g stroke="#d8dbe2" stroke-width="1"><path d="M60 190 H420 M60 140 H420 M60 90 H420 M60 40 H420"/></g><g fill="none" stroke="#111" stroke-width="1.5"><path d="M60 240 V20 M60 240 H425"/><path d="M60 240 L95 122.5 Q100 118 108 123 L150 122 Q230 50 300 60 Q350 66 380 100" stroke-width="2.5"/></g><g fill="#111"><text x="52" y="244" text-anchor="end">0</text><text x="52" y="194" text-anchor="end">100</text><text x="52" y="144" text-anchor="end">200</text><text x="52" y="94" text-anchor="end">300</text><text x="52" y="44" text-anchor="end">400</text><text x="20" y="130" transform="rotate(-90 20 130)" text-anchor="middle">Spannung σ in N/mm²</text><text x="240" y="268" text-anchor="middle">Dehnung ε in %</text></g></svg>`,
+  ghs: `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="#fff"/><path d="M100 10 L190 100 L100 190 L10 100 Z" fill="#fff" stroke="#d1001f" stroke-width="12" stroke-linejoin="miter"/><rect x="91" y="52" width="18" height="70" rx="3" fill="#111"/><circle cx="100" cy="142" r="10" fill="#111"/></svg>`
+};
+function sampleImg(key, w, h) {
+  const bytes = new TextEncoder().encode(SVG[key]); const blob = new Blob([bytes], { type: 'image/svg+xml' });
+  return { key: 'sample:' + key, ext: 'svg', mime: 'image/svg+xml', ok: true, w, h, bytes, blob, url: URL.createObjectURL(blob) };
+}
+function sampleData() {
+  const imgs = { reihe: sampleImg('reihe', 460, 180), teiler: sampleImg('teiler', 300, 260), sigma: sampleImg('sigma', 440, 280), ghs: sampleImg('ghs', 200, 200) };
+  const ET = 'Übungsband Elektrotechnik', WS = 'Fragenkatalog Werkstoffe', AS = 'Unterweisung Arbeitsschutz';
+  const R = (quelle, nr, fach, thema, teil, frage, antwort, choicesRaw = '', qi = null, ai = null) => ({ quelle, nr, fach, thema, teil, frage, antwort, choicesRaw, qImgs: qi ? [imgs[qi]] : [], aImgs: ai ? [imgs[ai]] : [] });
+  const rows = [
+    R(ET, '3', 'Elektrotechnik', 'Ohmsches Gesetz', 'A', 'Welche Einheit hat der elektrische Widerstand?', '3', '1. Volt\n2. Ampere\n3. Ohm\n4. Watt'),
+    R(ET, '9', 'Elektrotechnik', 'Ohmsches Gesetz', 'A', 'Wie ändert sich der Strom, wenn bei gleicher Spannung der Widerstand verdoppelt wird?', '2', '1. Er verdoppelt sich\n2. Er halbiert sich\n3. Er bleibt gleich'),
+    R(ET, '14', 'Elektrotechnik', 'Ohmsches Gesetz', 'A', 'Ein Widerstand von 47 Ω liegt an 12 V. Wie groß ist der Strom?', 'I = U / R = 12 V / 47 Ω ≈ 0,26 A'),
+    R(ET, '17', 'Elektrotechnik', 'Ohmsches Gesetz', 'B', 'An einem Widerstand fallen bei 20 mA genau 5 V ab. Berechnen Sie den Widerstandswert.', 'R = U / I = 5 V / 0,02 A = 250 Ω'),
+    R(ET, '21', 'Elektrotechnik', 'Ohmsches Gesetz', 'B', 'Berechnen Sie den Gesamtwiderstand der abgebildeten Reihenschaltung und den Strom bei U = 13 V.', 'R = 100 Ω + 220 Ω + 330 Ω = 650 Ω\nI = 13 V / 650 Ω = 20 mA', '', 'reihe'),
+    R(ET, '31', 'Elektrotechnik', 'Schaltungen', 'A', 'Was gilt für die Spannung in einer Parallelschaltung?', '1', '1. An allen Zweigen liegt dieselbe Spannung\n2. Die Teilspannungen addieren sich zur Gesamtspannung\n3. Die Spannung teilt sich im Verhältnis der Widerstände'),
+    R(ET, '33', 'Elektrotechnik', 'Schaltungen', 'A', 'Zwei Widerstände von je 100 Ω sind parallel geschaltet. Wie groß ist der Ersatzwiderstand?', '50 Ω'),
+    R(ET, '36', 'Elektrotechnik', 'Schaltungen', 'A', 'Welche Aussage zur Reihenschaltung ist richtig?', '1', '1. Der Strom ist an jeder Stelle gleich groß\n– gilt für jeden Widerstand der Reihe\n– gilt auch für die Zuleitung\n2. Die Spannung ist an jedem Widerstand gleich groß\n3. Der Gesamtwiderstand ist kleiner als der kleinste Einzelwiderstand'),
+    R(ET, '40', 'Elektrotechnik', 'Schaltungen', 'B', 'Skizzieren Sie einen unbelasteten Spannungsteiler aus zwei Widerständen und geben Sie die Formel für die Teilspannung U2 an.', 'U2 = U · R2 / (R1 + R2)', '', null, 'teiler'),
+    R(ET, '52', 'Elektrotechnik', 'Schutzmaßnahmen', 'A', 'Wofür steht die Abkürzung RCD?', 'Residual Current Device, also Fehlerstrom-Schutzeinrichtung (FI-Schutzschalter)'),
+    R(ET, '55', 'Elektrotechnik', 'Schutzmaßnahmen', 'A', 'Welcher Bemessungsdifferenzstrom ist für den zusätzlichen Schutz in Steckdosenstromkreisen üblich?', '2', '1. 10 mA\n2. 30 mA\n3. 300 mA\n4. 500 mA'),
+    R(ET, '58', 'Elektrotechnik', 'Schutzmaßnahmen', 'B', 'Nennen Sie die fünf Sicherheitsregeln in der richtigen Reihenfolge.', '1. Freischalten\n2. Gegen Wiedereinschalten sichern\n3. Spannungsfreiheit feststellen\n4. Erden und kurzschließen\n5. Benachbarte, unter Spannung stehende Teile abdecken oder abschranken'),
+    R(ET, '61', 'Elektrotechnik', 'Schutzmaßnahmen', 'B', 'Erläutern Sie, warum der Schutzleiter bei einem Körperschluss das Auslösen der Überstrom-Schutzeinrichtung bewirkt.', 'Über den niederohmigen Schutzleiter fließt ein großer Fehlerstrom. Er bringt die Sicherung oder den Leitungsschutzschalter in kurzer Zeit zum Auslösen, bevor eine gefährliche Berührungsspannung lange anliegt.'),
+    R(WS, '4', 'Werkstofftechnik', 'Metalle', 'A', 'Welches Metall hat die höchste elektrische Leitfähigkeit?', '2', '1. Kupfer\n2. Silber\n3. Aluminium\n4. Gold'),
+    R(WS, '7', 'Werkstofftechnik', 'Metalle', 'A', 'Was versteht man unter einer Legierung?', 'Ein metallischer Werkstoff aus mindestens zwei Elementen, von denen mindestens eines ein Metall ist, meist durch Zusammenschmelzen hergestellt.'),
+    R(WS, '8', 'Werkstofftechnik', 'Metalle', 'A', 'Woraus besteht Messing?', '2', '1. Kupfer und Zinn\n2. Kupfer und Zink\n3. Eisen und Kohlenstoff'),
+    R(WS, '12', 'Werkstofftechnik', 'Metalle', 'B', 'Beschreiben Sie den Unterschied zwischen Stahl und Gusseisen.', 'Stahl: Kohlenstoffgehalt unter etwa 2 %, schmied- und gut verformbar.\nGusseisen: über etwa 2 % Kohlenstoff, spröde, gut gießbar.'),
+    R(WS, '15', 'Werkstofftechnik', 'Metalle', 'B', 'Lesen Sie aus dem Spannungs-Dehnungs-Diagramm die Streckgrenze Re ab.', 'Re ≈ 235 N/mm²', '', 'sigma'),
+    R(WS, '22', 'Werkstofftechnik', 'Kunststoffe', 'A', 'Welche Kunststoffgruppe lässt sich nach dem Erwärmen erneut verformen?', '2', '1. Duroplaste\n– engmaschig vernetzt\n2. Thermoplaste\n– unvernetzte Fadenmoleküle\n– schmelzbar und schweißbar\n3. Elastomere\n– weitmaschig vernetzt'),
+    R(WS, '24', 'Werkstofftechnik', 'Kunststoffe', 'A', 'Nennen Sie zwei typische Isolierstoffe für Kabelmäntel.', 'PVC und PE (auch Gummi, z. B. EPR)'),
+    R(WS, '27', 'Werkstofftechnik', 'Kunststoffe', 'B', 'Erklären Sie, warum sich Duroplaste nicht schweißen lassen.', 'Duroplaste sind engmaschig vernetzt. Beim Erwärmen zersetzen sie sich, statt zu schmelzen.'),
+    R(AS, '5', 'Arbeitssicherheit', 'Gefahrstoffe', 'A', 'Was bedeutet das abgebildete Gefahrenpiktogramm?', '2', '1. Ätzend\n2. Gesundheitsgefährdend (Achtung)\n3. Entzündbar', 'ghs'),
+    R(AS, '6', 'Arbeitssicherheit', 'Gefahrstoffe', 'A', 'Wo finden Sie verbindliche Angaben zum Umgang mit einem Gefahrstoff im Betrieb?', 'Im Sicherheitsdatenblatt und in der Betriebsanweisung'),
+    R(AS, '11', 'Arbeitssicherheit', 'Gefahrstoffe', 'B', 'Nennen Sie die Rangfolge der Schutzmaßnahmen nach dem STOP-Prinzip.', 'Substitution, technische, organisatorische und persönliche Schutzmaßnahmen'),
+    R(AS, '18', 'Arbeitssicherheit', 'Erste Hilfe', 'A', 'Welche Notrufnummer gilt europaweit für Rettungsdienst und Feuerwehr?', '2', '1. 110\n2. 112\n3. 116 117'),
+    R(AS, '19', 'Arbeitssicherheit', 'Erste Hilfe', 'A', 'Was ist bei einem Stromunfall als Erstes zu tun?', 'Stromkreis unterbrechen und auf Eigenschutz achten. Erst danach Erste Hilfe leisten und den Notruf absetzen.'),
+    R(AS, '23', 'Arbeitssicherheit', 'Erste Hilfe', 'B', 'Wann wird die stabile Seitenlage angewendet, und worauf ist dabei zu achten?', 'Bei bewusstlosen Personen mit normaler Atmung. Kopf überstrecken, Mund als tiefsten Punkt lagern, Atmung laufend kontrollieren.')
+  ];
+  rows.forEach((q, i) => { q.row = i + 2; });
+  const d = finishData({ fileName: 'Beispieldaten', isSample: true, sheetName: 'Fragen', headerRow: 1, colMap: {}, rows, imgCount: 4, notes: [], teilNames: { A: 'Gebunden', B: 'Ungebunden' } });
+  d.ownUrls = Object.values(imgs).map(i => i.url);
+  return d;
+}
+let sampleCache = null;
+const getSample = () => (sampleCache && sampleCache.ownUrls.length ? sampleCache : (sampleCache = sampleData()));
+
+/* ================= Eingaben ================= */
+function syncInputs() {
+  const r = $(`input[name="teil"][value="${S.teil}"]`) || $('#teilMix'); r.checked = true;
+  $('#total').value = S.total ?? ''; $('#fill').value = S.fill; $('#order').value = S.order;
+  $('#title').value = S.title ?? ''; $('#subtitle').value = S.subtitle ?? '';
+  $('#optSources').checked = !!S.sources; $('#optHeadings').checked = !!S.headings; $('#optName').checked = !!S.namefield;
+  $('#optLines').value = String(S.lines ?? 3); if (!$('#optLines').value) $('#optLines').value = '3';
+  $('#fmt').value = S.fmt || 'pdf';
+  $('#variants').value = String(S.variants || 1); if (!$('#variants').value) { $('#variants').value = '1'; S.variants = 1; }
+}
+function selectionChanged() { saveSettings(); renderValidation(); markDirty(); }
+let outT = 0;
+function outputChanged() {
+  saveSettings();
+  if (!state.exam) return;
+  renderResult(); clearTimeout(outT); outT = setTimeout(updateCode, 250);
+}
+function cleanRules() {
+  for (const [fb, rf] of Object.entries(S.rules)) {
+    if (rf.themes) for (const [t, rt] of Object.entries(rf.themes)) if ((rt.min ?? '') === '' && (rt.max ?? '') === '') delete rf.themes[t];
+    if (rf.themes && !Object.keys(rf.themes).length) delete rf.themes;
+    if ((rf.min ?? '') === '' && (rf.max ?? '') === '' && !rf.themes) delete S.rules[fb];
+  }
+}
+
+function bind() {
+  const fi = $('#fileInput');
+  fi.addEventListener('change', () => { loadFile(fi.files[0]); fi.value = ''; });
+  const drop = $('#drop');
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { const f = e.dataTransfer?.files?.[0]; if (f) loadFile(f); });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => { if (!drop.contains(e.target)) { e.preventDefault(); const f = e.dataTransfer?.files?.[0]; if (f) loadFile(f); } });
+
+  $('#fileStatus').addEventListener('click', async e => {
+    const id = e.target.id;
+    if (id === 'showSample') setData(getSample());
+    else if (id === 'forgetFile') { await idb.del('last'); state.hasStored = false; setData(getSample()); toast('Die Datei ist in diesem Browser nicht mehr gespeichert.'); }
+    else if (id === 'reloadStored') { const rec = await idb.get('last'); if (rec) { renderFileStatus('„' + rec.name + '“ wird gelesen …'); try { setData(await loadBuffer(rec.buf, rec.name)); } catch (err) { showFileError(err.message); } } }
+  });
+  $('#sheetSel').addEventListener('change', async e => {
+    const d = state.data; if (!d || !d.wbx) return;
+    renderFileStatus('Tabellenblatt wird gelesen …');
+    try { const nd = await buildData(d.wbx, +e.target.value, d.fileName); nd.wbx = d.wbx; nd.candidates = d.candidates; setData(nd); } catch (err) { showFileError(err.message); }
+  });
+  $('#templateBtn').addEventListener('click', e => withBusy(e.currentTarget, 'Wird erstellt …', async () => saveFile('Fragenkatalog_Vorlage.xlsx', await buildTemplate())));
+
+  $$('input[name="teil"]').forEach(r => r.addEventListener('change', () => { S.teil = r.value; renderRules(); selectionChanged(); }));
+  $('#total').addEventListener('input', e => { S.total = e.target.value; selectionChanged(); });
+  $('#fill').addEventListener('change', e => { S.fill = e.target.value; selectionChanged(); });
+  $('#order').addEventListener('change', e => { S.order = e.target.value; selectionChanged(); });
+  $('#rules').addEventListener('click', e => {
+    const b = e.target.closest('button.name'); if (!b) return;
+    const i = +b.dataset.fb; const fb = state.data.fbs[i]; const open = b.getAttribute('aria-expanded') !== 'true';
+    b.setAttribute('aria-expanded', open); $('#th-' + i).hidden = !open;
+    if (open) state.openFb.add(fb.name); else state.openFb.delete(fb.name);
+  });
+  $('#rules').addEventListener('input', e => {
+    const m = e.target.id.match(/^(fb|th)-(\d+)(?:-(\d+))?-(min|max)$/); if (!m) return;
+    const fb = state.data.fbs[+m[2]]; const rf = S.rules[fb.name] || (S.rules[fb.name] = {});
+    if (m[1] === 'fb') rf[m[4]] = e.target.value;
+    else { const th = fb.themes[+m[3]]; const ts = rf.themes || (rf.themes = {}); (ts[th.name] || (ts[th.name] = {}))[m[4]] = e.target.value; }
+    cleanRules(); selectionChanged();
+  });
+
+  $('#title').addEventListener('input', e => { S.title = e.target.value; outputChanged(); });
+  $('#subtitle').addEventListener('input', e => { S.subtitle = e.target.value; outputChanged(); });
+  $('#optSources').addEventListener('change', e => { S.sources = e.target.checked; outputChanged(); });
+  $('#optHeadings').addEventListener('change', e => { S.headings = e.target.checked; outputChanged(); });
+  $('#optName').addEventListener('change', e => { S.namefield = e.target.checked; outputChanged(); });
+  $('#optLines').addEventListener('change', e => { S.lines = +e.target.value; outputChanged(); });
+  $('#variants').addEventListener('change', e => { S.variants = +e.target.value || 1; if (state.variant > S.variants) state.variant = 1; outputChanged(); });
+  $('#vchips').addEventListener('click', e => { const b = e.target.closest('[data-var]'); if (!b) return; state.variant = +b.dataset.var; renderPaper(); });
+  $('#vchips').addEventListener('keydown', e => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; e.preventDefault();
+    const nv = Math.max(1, +S.variants || 1); state.variant = ((state.variant - 1 + (e.key === 'ArrowRight' ? 1 : nv - 1)) % nv) + 1;
+    renderPaper(); $(`#vchips [data-var="${state.variant}"]`)?.focus();
+  });
+
+  $('#genBtn').addEventListener('click', () => {
+    if (generate(newSeed(), { record: true })) { codeMsg(''); scrollToResult(); }
+    else $('#ruleErrors').scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+  $('#seedBtn').addEventListener('click', () => {
+    const v = norm($('#seedIn').value).toUpperCase();
+    if (!v) { $('#seedIn').focus(); toast('Bitte einen Startwert eingeben.'); return; }
+    if (generate(v, { record: true })) scrollToResult();
+  });
+
+  $$('.tab').forEach(t => {
+    t.addEventListener('click', () => { state.view = t.dataset.v; renderPaper(); });
+    t.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const tabs = $$('.tab'); const i = tabs.indexOf(t); const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      n.focus(); n.click();
+    });
+  });
+  $('#fmt').addEventListener('change', e => { S.fmt = e.target.value; saveSettings(); });
+  $('#dlOne').addEventListener('click', e => withBusy(e.currentTarget, 'Wird erstellt …', async () => {
+    if (!state.exam) return; const m = buildModel(); const fmt = $('#fmt').value; const v = state.view;
+    await saveFile(fileName(m, v, fmt), await buildFile(m, v, fmt));
+  }));
+  $('#dlZip').addEventListener('click', e => withBusy(e.currentTarget, 'Wird erstellt …', async () => {
+    if (!state.exam) return; const JSZip = await ensureJSZip(); const fmt = $('#fmt').value;
+    const nv = Math.max(1, +S.variants || 1); const zip = new JSZip();
+    const m1 = buildModel(1); const base = fileBase(m1);
+    for (let k = 1; k <= nv; k++) { const m = buildModel(k); for (const v of ['q', 'a', 'qa']) zip.file(fileName(m, v, fmt), await buildFile(m, v, fmt)); }
+    let map = '';
+    if (nv > 1) {
+      const pos = new Map(variantItems(state.exam, 1).map((q, i) => [q, i + 1]));
+      map = '\nReihenfolge der Varianten (Fragenummern aus Variante 1):\n';
+      for (let k = 1; k <= nv; k++) map += `Variante ${k}: ${variantItems(state.exam, k).map(q => pos.get(q)).join(', ')}\n`;
+    }
+    zip.file(`${base}_Reproduktionscode.txt`, `${m1.title}\nPrüfungs-ID: ${m1.id}\nErstellt: ${fmtDate(state.exam.created)}\nDatei: ${state.data.isSample ? 'Beispieldaten' : state.data.fileName}\nFragen: ${m1.count}\nVarianten: ${nv}\n${map}\nReproduktionscode (im Prüfungsbogen-Generator unter „Prüfung reproduzieren“ einfügen):\n${m1.code}\n`);
+    await saveFile(`${base}.zip`, await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }));
+  }));
+  $('#printBtn').addEventListener('click', () => window.print());
+  $('#copyCode').addEventListener('click', () => {
+    const ta = $('#codeOut'); const t = ta.value; if (!t) return;
+    const fallback = () => { ta.focus(); ta.select(); toast('Code markiert. Mit Strg+C bzw. Cmd+C kopieren.'); };
+    try { navigator.clipboard.writeText(t).then(() => toast('Reproduktionscode kopiert.'), fallback); } catch { fallback(); }
+  });
+  $('#codeApply').addEventListener('click', () => { const v = $('#codeIn').value.trim(); if (!v) { $('#codeIn').focus(); codeMsg('Bitte zuerst einen Reproduktionscode einfügen.', 'err'); return; } applyCode(v); });
+  $('#hist').addEventListener('click', e => {
+    const b = e.target.closest('[data-hist]'); if (!b) return;
+    const x = history()[+b.dataset.hist]; if (!x) return;
+    $('#codeIn').value = x.code; applyCode(x.code);
+  });
+}
+
+/* ================= Start ================= */
+function init() {
+  syncInputs(); bind(); renderHistory();
+  setData(getSample());
+  ensureJSZip().catch(() => {});
+  downloads().then(d => {
+    if (d === undefined) { $('#printBtn').hidden = false; return; }
+    if (d === null) { $('#dlNote').hidden = false; $('#dlNote').textContent = 'Herunterladen ist in dieser Ansicht nicht verfügbar. Den Reproduktionscode können Sie trotzdem kopieren.'; $('#dlOne').disabled = true; $('#dlZip').disabled = true; }
+  });
+  idb.get('last').then(async rec => {
+    if (!rec || !rec.buf) return;
+    state.hasStored = true;
+    if (state.data && !state.data.isSample) return;
+    renderFileStatus('Zuletzt verwendete Datei „' + rec.name + '“ wird geladen …');
+    try { setData(await loadBuffer(rec.buf, rec.name)); }
+    catch (e) { console.error(e); renderFileStatus(); }
+  });
+}
+init();
+})();
+</script>
+</body>
+</html>
