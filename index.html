@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Prüfungen aus einem Excel-Fragenkatalog erstellen: Auswahlregeln je Fachbereich und Thema, drei Fassungen, Varianten, reproduzierbar per Code. Alle Daten bleiben im Browser.">
+<meta name="description" content="Prüfungen aus einem Excel-Fragenkatalog erstellen: Auswahlregeln je Fachbereich, Thema und Quelle, drei Fassungen, Varianten, reproduzierbar per Code. Alle Daten bleiben im Browser.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='3' width='22' height='26' rx='2' fill='%23fff' stroke='%232747b8' stroke-width='2'/%3E%3Cpath d='M10 10h12M10 15h12M10 20h7' stroke='%232747b8' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M19 22l2 2 4-5' fill='none' stroke='%23c4301f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <title>Prüfungsbogen-Generator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -150,6 +150,10 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .theme-row .name{overflow-wrap:anywhere;font-size:.92rem}
 .rrow input.bad{border-color:var(--danger);background:var(--danger-soft);color:var(--danger)}
 .rrow.off .name,.rrow.off .avail{opacity:.45}
+.src-row .name{overflow-wrap:anywhere;font-size:.92rem;line-height:1.3}
+.src-row.nosrc .name{font-style:italic;color:var(--muted)}
+.src-filter{margin-bottom:6px}
+.src-empty{padding:8px;color:var(--muted);font-size:.86rem}
 .total-hint{font-variant-numeric:tabular-nums}
 
 /* Reproduktion */
@@ -171,7 +175,11 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .res-title h2{font-family:var(--font-paper);font-weight:600;font-size:1.55rem;margin:6px 0 2px;line-height:1.2;text-wrap:balance;overflow-wrap:anywhere}
 .meta{color:var(--muted);margin:0;font-size:.9rem;font-variant-numeric:tabular-nums}
 .badge{display:inline-block;font-size:.75rem;font-weight:700;padding:1px 7px;border-radius:3px;background:var(--warn-soft);color:var(--warn);letter-spacing:.02em}
-.dist{display:grid;gap:7px;flex:1 1 280px;max-width:440px;min-width:0}
+.dist-wrap{display:grid;gap:8px;flex:1 1 280px;max-width:440px;min-width:0}
+.dist-by{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.dist-by button{font:inherit;font-size:.78rem;font-weight:700;padding:3px 9px;border-radius:99px;border:1px solid var(--line-strong);background:var(--panel);color:var(--muted);cursor:pointer}
+.dist-by button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.dist{display:grid;gap:7px;min-width:0}
 .dist-row{display:grid;grid-template-columns:minmax(0,10rem) minmax(0,1fr) 2.2rem;gap:10px;align-items:center;font-size:.84rem}
 .dist-row .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
 .dist-row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -307,6 +315,12 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
           <div class="rules" id="rules"></div>
           <p class="hint">Leeres Feld heißt keine Grenze. Max 0 schließt einen Fachbereich oder ein Thema aus. Auf einen Fachbereich tippen, um seine Themen einzustellen.</p>
         </div>
+        <div class="field">
+          <span class="label" id="srcLbl">Mindest- und Höchstanzahl je Quelle</span>
+          <input type="text" id="srcFilter" class="src-filter" placeholder="Quelle suchen …" autocomplete="off" aria-label="Quellen filtern" hidden>
+          <div class="rules" id="srcRules" aria-labelledby="srcLbl"></div>
+          <p class="hint">Gilt zusätzlich zu den Fachbereichen und Themen, über alle Fachbereiche hinweg. Max 0 schließt eine Quelle aus.</p>
+        </div>
         <div class="error-box" id="ruleErrors" role="alert" hidden></div>
       </section>
 
@@ -379,7 +393,13 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
               <h2 id="examTitle">Prüfung wird erstellt …</h2>
               <p class="meta" id="examMeta"></p>
             </div>
-            <div class="dist" id="dist" aria-label="Verteilung nach Fachbereich"></div>
+            <div class="dist-wrap">
+              <div class="dist-by" role="group" aria-label="Verteilung anzeigen nach">
+                <button type="button" data-by="fb" aria-pressed="true">Fachbereich</button>
+                <button type="button" data-by="src" aria-pressed="false">Quelle</button>
+              </div>
+              <div class="dist" id="dist" aria-label="Verteilung"></div>
+            </div>
           </div>
           <div class="vbar" id="vbar" hidden>
             <span class="label" id="vLbl">Variante</span>
@@ -822,6 +842,14 @@ function finishData(d) {
     if (!fb.tmap.has(q.thema)) { const th = { name: q.thema, i: fb.themes.length }; fb.tmap.set(q.thema, th); fb.themes.push(th); }
   }
   d.fbIndex = new Map(d.fbs.map((f, i) => [f.name, i]));
+  const srcMap = new Map();
+  for (const q of d.rows) {
+    const name = norm(q.quelle); q.skey = name.toLowerCase();
+    const sc = srcMap.get(q.skey); if (sc) sc.count++; else srcMap.set(q.skey, { key: q.skey, name: name || '(ohne Quelle)', count: 1 });
+  }
+  d.srcs = [...srcMap.values()].sort((a, b) => (a.key === '') - (b.key === '') || a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' }));
+  d.srcs.forEach((x, i) => { x.i = i; });
+  d.srcIndex = new Map(d.srcs.map(x => [x.key, x.i]));
   return d;
 }
 function tokenMap(d) {
@@ -907,53 +935,155 @@ function srcText(q) {
 /* ================= Regeln und Auswahl ================= */
 const num = v => { if (v === '' || v == null) return null; const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 0 ? n : null; };
 const poolFor = (d, teil) => d.rows.filter(q => teil === 'mix' || q.teil === teil);
+/* Alle Regeln (Fachbereich, Thema, Quelle, Gesamtzahl) bilden ein Flussnetz:
+   S → Fachbereich → Thema → Zelle (Thema × Quelle) → Quelle → T, mit Unter- und Obergrenzen.
+   Eine Auswahl ist genau dann möglich, wenn eine zulässige Zirkulation existiert. */
+class Flow {
+  constructor(n) { this.n = n; this.head = new Int32Array(n).fill(-1); this.to = []; this.cap = []; this.nx = []; }
+  add(u, v, c) {
+    this.to.push(v); this.cap.push(c); this.nx.push(this.head[u]); this.head[u] = this.to.length - 1;
+    this.to.push(u); this.cap.push(0); this.nx.push(this.head[v]); this.head[v] = this.to.length - 1;
+    return this.to.length - 2;
+  }
+  max(s, t) {
+    const lvl = new Int32Array(this.n), it = new Int32Array(this.n); let f = 0;
+    const bfs = () => {
+      lvl.fill(-1); lvl[s] = 0; const q = [s];
+      for (let i = 0; i < q.length; i++) { const u = q[i]; for (let e = this.head[u]; e !== -1; e = this.nx[e]) if (this.cap[e] > 0 && lvl[this.to[e]] < 0) { lvl[this.to[e]] = lvl[u] + 1; q.push(this.to[e]); } }
+      return lvl[t] >= 0;
+    };
+    const dfs = (u, p) => {
+      if (u === t) return p;
+      for (; it[u] !== -1; it[u] = this.nx[it[u]]) {
+        const e = it[u], v = this.to[e];
+        if (this.cap[e] > 0 && lvl[v] === lvl[u] + 1) { const r = dfs(v, Math.min(p, this.cap[e])); if (r > 0) { this.cap[e] -= r; this.cap[e ^ 1] += r; return r; } }
+      }
+      return 0;
+    };
+    while (bfs()) { it.set(this.head); let r; while ((r = dfs(s, Infinity)) > 0) f += r; }
+    return f;
+  }
+}
+/* Liefert die Gesamtzahl einer zulässigen Auswahl (bei total = null irgendeine), sonst null.
+   forced: Mindestanzahl je Zelle (bereits gezogene Fragen). relax: eine Regel probeweise aufheben. */
+function circulation(net, total, forced, relax) {
+  const F = net.fbs.length, TH = net.themes.length, SR = net.srcs.length;
+  const S = 0, T = 1, SS = 2, TT = 3, fb0 = 4, th0 = fb0 + F, s0 = th0 + TH, N = s0 + SR;
+  const B = net.size + 1, g = new Flow(N), exc = new Float64Array(N); let ok = true;
+  const edge = (u, v, lo, hi) => { hi = hi == null ? B : Math.min(hi, B); if (hi < lo) { ok = false; return -1; } exc[v] += lo; exc[u] -= lo; return g.add(u, v, hi - lo); };
+  const R = (kind, i, lo, hi) => relax && relax.kind === kind && relax.i === i ? (relax.side === 'min' ? [0, hi] : [lo, null]) : [lo, hi];
+  const te = total == null ? edge(T, S, 0, B) : edge(T, S, total, total);
+  net.fbs.forEach((f, i) => { const [lo, hi] = R('fb', i, f.min, f.max); edge(S, fb0 + i, lo, hi); });
+  net.themes.forEach((t, k) => { const [lo, hi] = R('th', k, t.min, t.max); edge(fb0 + t.f, th0 + k, lo, hi); });
+  net.cells.forEach((c, k) => edge(th0 + c.tk, s0 + c.s, forced ? forced[k] : 0, c.qs.length));
+  net.srcs.forEach((x, i) => { const [lo, hi] = R('src', i, x.min, x.max); edge(s0 + i, T, lo, hi); });
+  if (!ok) return null;
+  let need = 0;
+  for (let v = 0; v < N; v++) { if (exc[v] > 0) { g.add(SS, v, exc[v]); need += exc[v]; } else if (exc[v] < 0) g.add(v, TT, -exc[v]); }
+  if (g.max(SS, TT) !== need) return null;
+  return total == null ? B - g.cap[te] : total;
+}
+/* Die möglichen Gesamtzahlen bilden ein lückenloses Intervall. */
+function feasibleRange(net) {
+  const n0 = circulation(net, null); if (n0 === null) return null;
+  let a = 0, b = n0;
+  while (a < b) { const m = (a + b) >> 1; if (circulation(net, m) !== null) b = m; else a = m + 1; }
+  const lo = a; a = n0; b = net.size;
+  while (a < b) { const m = (a + b + 1) >> 1; if (circulation(net, m) !== null) a = m; else b = m - 1; }
+  return [lo, a];
+}
+function diagnose(net) {
+  const c = [];
+  const add = (kind, i, side, id, label) => c.push({ kind, i, side, id, label });
+  net.fbs.forEach((f, i) => { if (f.min > 0) add('fb', i, 'min', `fb-${i}-min`, `${f.name} Min`); if (f.max != null) add('fb', i, 'max', `fb-${i}-max`, `${f.name} Max`); });
+  net.themes.forEach((t, k) => { if (t.min > 0) add('th', k, 'min', `th-${t.f}-${t.j}-min`, `${t.fbName} › ${t.name} Min`); if (t.max != null) add('th', k, 'max', `th-${t.f}-${t.j}-max`, `${t.fbName} › ${t.name} Max`); });
+  net.srcs.forEach((x, i) => { if (x.min > 0) add('src', i, 'min', `src-${i}-min`, `Quelle „${x.name}“ Min`); if (x.max != null) add('src', i, 'max', `src-${i}-max`, `Quelle „${x.name}“ Max`); });
+  const hits = c.filter(r => circulation(net, null, null, r) !== null);
+  if (hits.length) {
+    const names = hits.slice(0, 6).map(h => h.label).join(', ') + (hits.length > 6 ? ' …' : '');
+    return [{ msg: `Die Regeln widersprechen sich. Es reicht, eine dieser Angaben zu ändern: ${names}.`, ids: hits.map(h => h.id) }];
+  }
+  return [{ msg: 'Die Regeln für Quellen passen nicht zu denen für Fachbereiche und Themen. Bitte die Mindestwerte der Quellen und die Höchstwerte der Fachbereiche und Themen prüfen.', ids: c.filter(r => r.kind === 'src').map(r => r.id) }];
+}
 function plan(d, s) {
   const pool = poolFor(d, s.teil); const errors = [];
+  const themes = [];
   const fbPlans = d.fbs.map((fb, i) => {
     const rf = s.rules[fb.name] || {};
     const fp = { name: fb.name, i, themes: [], avail: 0, min: num(rf.min) ?? 0, max: num(rf.max) };
     fb.themes.forEach((th, j) => {
       const rt = rf.themes?.[th.name] || {};
       const qs = pool.filter(q => q.fach === fb.name && q.thema === th.name);
-      const tp = { name: th.name, j, qs, avail: qs.length, min: num(rt.min) ?? 0, max: num(rt.max) };
+      const tp = { name: th.name, fbName: fb.name, f: i, j, k: themes.length, qs, avail: qs.length, min: num(rt.min) ?? 0, max: num(rt.max) };
       tp.maxE = Math.min(tp.max ?? Infinity, qs.length);
       if (tp.max != null && tp.min > tp.max) errors.push({ msg: `${fb.name} › ${th.name}: Min (${tp.min}) ist größer als Max (${tp.max}).`, ids: [`th-${i}-${j}-min`, `th-${i}-${j}-max`] });
       else if (tp.min > qs.length) errors.push({ msg: `${fb.name} › ${th.name}: Min ${tp.min}, aber nur ${qs.length} passende Frage${qs.length === 1 ? '' : 'n'}.`, ids: [`th-${i}-${j}-min`] });
-      fp.themes.push(tp); fp.avail += qs.length;
+      fp.themes.push(tp); themes.push(tp); fp.avail += qs.length;
     });
     const sMin = sum(fp.themes.map(t => t.min)), sMax = sum(fp.themes.map(t => t.maxE));
-    fp.minE = Math.max(fp.min, sMin); fp.maxE = Math.min(fp.max ?? Infinity, sMax);
     if (fp.max != null && fp.min > fp.max) errors.push({ msg: `${fb.name}: Min (${fp.min}) ist größer als Max (${fp.max}).`, ids: [`fb-${i}-min`, `fb-${i}-max`] });
     else if (fp.max != null && sMin > fp.max) errors.push({ msg: `${fb.name}: Die Themen verlangen zusammen mindestens ${sMin} Fragen, Max ist ${fp.max}.`, ids: [`fb-${i}-max`] });
     else if (fp.min > sMax) errors.push({ msg: `${fb.name}: Min ${fp.min}, aber höchstens ${sMax} Fragen möglich.`, ids: [`fb-${i}-min`] });
     return fp;
   });
-  const totalMin = sum(fbPlans.map(f => f.minE)), totalMax = sum(fbPlans.map(f => Math.max(0, Math.min(f.maxE, f.avail))));
-  const n = num(s.total);
+  const srcAvail = new Map(); for (const q of pool) srcAvail.set(q.skey, (srcAvail.get(q.skey) || 0) + 1);
+  const sr = s.srcRules || {};
+  const srcPlans = d.srcs.map((x, i) => {
+    const r = sr[x.key] || {};
+    const sp = { key: x.key, name: x.name, i, avail: srcAvail.get(x.key) || 0, min: num(r.min) ?? 0, max: num(r.max) };
+    if (sp.max != null && sp.min > sp.max) errors.push({ msg: `Quelle „${x.name}“: Min (${sp.min}) ist größer als Max (${sp.max}).`, ids: [`src-${i}-min`, `src-${i}-max`] });
+    else if (sp.min > sp.avail) errors.push({ msg: `Quelle „${x.name}“: Min ${sp.min}, aber nur ${sp.avail} passende Frage${sp.avail === 1 ? '' : 'n'}.`, ids: [`src-${i}-min`] });
+    return sp;
+  });
+  const cells = [], cmap = new Map();
+  for (const t of themes) for (const q of t.qs) {
+    const si = d.srcIndex.get(q.skey), key = t.k * 100000 + si; let c = cmap.get(key);
+    if (!c) { c = { f: t.f, tk: t.k, s: si, qs: [] }; cmap.set(key, c); cells.push(c); }
+    c.qs.push(q);
+  }
+  const net = { fbs: fbPlans, themes, srcs: srcPlans, cells, size: pool.length };
+  const n = num(s.total); let range = null;
   if (!pool.length) errors.push({ msg: 'Für diese Teil-Auswahl gibt es keine Fragen.', ids: [] });
-  else if (n == null || n < 1) errors.push({ msg: 'Bitte die Gesamtzahl der Fragen angeben.', ids: ['total'] });
-  else if (n < totalMin) errors.push({ msg: `Die Mindestwerte verlangen zusammen ${totalMin} Fragen. Die Gesamtzahl ${n} ist zu klein.`, ids: ['total'] });
-  else if (n > totalMax) errors.push({ msg: `Mit diesen Regeln sind höchstens ${totalMax} Fragen möglich. Die Gesamtzahl ${n} ist zu groß.`, ids: ['total'] });
-  return { pool, errors, fbPlans, totalMin, totalMax, n };
+  else {
+    const ruleErr = errors.length;
+    if (n == null || n < 1) errors.push({ msg: 'Bitte die Gesamtzahl der Fragen angeben.', ids: ['total'] });
+    if (!ruleErr) {
+      range = feasibleRange(net);
+      if (!range) errors.push(...diagnose(net));
+      else if (n != null && n >= 1) {
+        if (n < range[0]) errors.push({ msg: `Die Mindestwerte verlangen zusammen ${range[0]} Fragen. Die Gesamtzahl ${n} ist zu klein.`, ids: ['total'] });
+        else if (n > range[1]) errors.push({ msg: range[1] ? `Mit diesen Regeln sind höchstens ${range[1]} Fragen möglich. Die Gesamtzahl ${n} ist zu groß.` : 'Mit diesen Regeln ist keine Frage auswählbar.', ids: ['total'] });
+      }
+    }
+  }
+  return { pool, errors, fbPlans, srcPlans, net, range, n };
 }
-function pickTheme(f, rng, fill) {
-  const el = f.themes.filter(t => t.count < t.maxE && t.rest.length); if (!el.length) return null;
-  if (fill === 'even') { const m = Math.min(...el.map(t => t.count)); const c = el.filter(t => t.count === m); return c[Math.floor(rng() * c.length)]; }
-  return weighted(el, el.map(t => t.rest.length), rng);
-}
+/* Zieht eine Frage nach der anderen. Vor jeder Übernahme prüft das Flussnetz, ob sich die Prüfung
+   danach noch regelkonform vervollständigen lässt. Eine Zelle, bei der das nicht mehr geht, bleibt zu. */
 function selectQuestions(p, s, rng) {
-  const fbs = p.fbPlans.map(f => ({ ...f, count: 0, themes: f.themes.map(t => ({ ...t, rest: shuffle(t.qs.slice(), rng), count: 0 })) }));
+  const net = p.net;
+  const cells = net.cells.map(c => ({ ...c, rest: shuffle(c.qs.slice(), rng), closed: false }));
+  const forced = new Int32Array(cells.length), fbCnt = new Int32Array(net.fbs.length), thCnt = new Int32Array(net.themes.length);
+  const left = k => cells[k].rest.length - forced[k];
   const chosen = [];
-  const take = (f, t) => { chosen.push(t.rest.pop()); t.count++; f.count++; };
-  for (const f of fbs) for (const t of f.themes) while (t.count < t.min && t.rest.length) take(f, t);
-  for (const f of fbs) while (f.count < f.minE) { const t = pickTheme(f, rng, s.fill); if (!t) break; take(f, t); }
   while (chosen.length < p.n) {
-    const el = fbs.filter(f => f.count < f.maxE && f.themes.some(t => t.count < t.maxE && t.rest.length));
-    if (!el.length) break;
-    let f;
-    if (s.fill === 'even') { const m = Math.min(...el.map(x => x.count)); const c = el.filter(x => x.count === m); f = c[Math.floor(rng() * c.length)]; }
-    else f = weighted(el, el.map(x => sum(x.themes.map(t => t.count < t.maxE ? t.rest.length : 0))), rng);
-    const t = pickTheme(f, rng, s.fill); if (!t) break; take(f, t);
+    const open = []; for (let k = 0; k < cells.length; k++) if (!cells[k].closed && left(k) > 0) open.push(k);
+    if (!open.length) break;
+    let k;
+    if (s.fill === 'even') {
+      const fm = Math.min(...open.map(x => fbCnt[cells[x].f]));
+      const fbs = [...new Set(open.filter(x => fbCnt[cells[x].f] === fm).map(x => cells[x].f))];
+      const f = fbs[Math.floor(rng() * fbs.length)];
+      const inF = open.filter(x => cells[x].f === f);
+      const tm = Math.min(...inF.map(x => thCnt[cells[x].tk]));
+      const ths = [...new Set(inF.filter(x => thCnt[cells[x].tk] === tm).map(x => cells[x].tk))];
+      const t = ths[Math.floor(rng() * ths.length)];
+      const inT = inF.filter(x => cells[x].tk === t);
+      k = weighted(inT, inT.map(left), rng);
+    } else k = weighted(open, open.map(left), rng);
+    forced[k]++;
+    if (circulation(net, p.n, forced) !== null) { const c = cells[k]; chosen.push(c.rest[forced[k] - 1]); fbCnt[c.f]++; thCnt[c.tk]++; }
+    else { forced[k]--; cells[k].closed = true; }
   }
   return chosen;
 }
@@ -968,13 +1098,16 @@ function orderQuestions(list, order, d, rng) {
 }
 
 /* ================= Zustand ================= */
-const DEFAULTS = { teil: 'mix', total: 20, fill: 'prop', rules: {}, title: 'Zwischenprüfung', subtitle: '', order: 'random', sources: true, headings: true, namefield: true, lines: 3, variants: 1, fmt: 'pdf' };
+const DEFAULTS = { teil: 'mix', total: 20, fill: 'prop', rules: {}, srcRules: {}, title: 'Zwischenprüfung', subtitle: '', order: 'random', sources: true, headings: true, namefield: true, lines: 3, variants: 1, fmt: 'pdf' };
 const S = Object.assign({}, DEFAULTS, store.get('pb.settings', {}));
 if (!S.rules || typeof S.rules !== 'object') S.rules = {};
-const state = { data: null, exam: null, view: 'qa', variant: 1, code: '', openFb: new Set(), pendingCode: null, lastPlan: null };
+if (!S.srcRules || typeof S.srcRules !== 'object') S.srcRules = {};
+const state = { data: null, exam: null, view: 'qa', variant: 1, distBy: 'fb', code: '', openFb: new Set(), pendingCode: null, lastPlan: null };
 const saveSettings = () => store.set('pb.settings', S);
-const selOf = s => ({ teil: s.teil, total: s.total, fill: s.fill, order: s.order, rules: JSON.parse(JSON.stringify(s.rules)) });
-const sigOf = s => JSON.stringify([s.teil, String(s.total), s.fill, s.order, compactRules(s.rules)]);
+const selOf = s => ({ teil: s.teil, total: s.total, fill: s.fill, order: s.order, rules: JSON.parse(JSON.stringify(s.rules)), srcRules: JSON.parse(JSON.stringify(s.srcRules || {})) });
+const sigOf = s => JSON.stringify([s.teil, String(s.total), s.fill, s.order, compactRules(s.rules), compactSrc(s.srcRules)]);
+function compactSrc(r) { const out = {}; for (const [k, v] of Object.entries(r || {})) { const a = num(v.min), b = num(v.max); if (a != null || b != null) out[k] = [a, b]; } return out; }
+function expandSrc(c) { const out = {}; for (const [k, v] of Object.entries(c || {})) out[k] = { min: v[0] ?? '', max: v[1] ?? '' }; return out; }
 function compactRules(rules) {
   const out = {};
   for (const [fb, rf] of Object.entries(rules || {})) {
@@ -1130,24 +1263,41 @@ function renderRules() {
     h += '</div></div>';
   });
   box.innerHTML = h;
+  const scnt = new Map(); for (const q of pool) scnt.set(q.skey, (scnt.get(q.skey) || 0) + 1);
+  let sh = '<div class="rrow rhead"><span>Quelle</span><span>verf.</span><span>Min</span><span>Max</span></div>';
+  d.srcs.forEach((x, i) => {
+    const r = S.srcRules[x.key] || {};
+    sh += `<div class="rrow src-row${x.key ? '' : ' nosrc'}" id="srcrow-${i}" data-name="${esc(x.name.toLowerCase())}"><span class="name">${esc(x.name)}</span><span class="avail">${scnt.get(x.key) || 0}</span>${numInput(`src-${i}-min`, r.min, `Mindestanzahl Quelle ${x.name}`)}${numInput(`src-${i}-max`, r.max, `Höchstanzahl Quelle ${x.name}`)}</div>`;
+  });
+  sh += '<div class="src-empty" id="srcNone" hidden>Keine Quelle passt zur Suche.</div>';
+  $('#srcRules').innerHTML = sh;
+  $('#srcFilter').hidden = d.srcs.length <= 10;
+  applySrcFilter();
   const c = t => d.rows.filter(q => t === 'mix' || q.teil === t).length;
   const lab = n => `${n} ${n === 1 ? 'Frage' : 'Fragen'}`;
   $('#cntA').textContent = lab(c('A')); $('#cntB').textContent = lab(c('B')); $('#cntMix').textContent = lab(c('mix'));
   $('#nameA').textContent = d.teilNames.A || ''; $('#nameB').textContent = d.teilNames.B || '';
 }
+function applySrcFilter() {
+  const f = norm($('#srcFilter').value).toLowerCase(); let shown = 0;
+  $$('#srcRules .src-row').forEach(r => { const on = !f || r.dataset.name.includes(f) || r.querySelector('input.bad'); r.hidden = !on; if (on) shown++; });
+  const none = $('#srcNone'); if (none) none.hidden = shown > 0;
+}
 function renderValidation(p) {
   p = p || plan(state.data, S); state.lastPlan = p;
-  $$('#rules input.bad, #total.bad').forEach(el => el.classList.remove('bad'));
-  $$('#rules .rrow.off').forEach(el => el.classList.remove('off'));
+  $$('#rules input.bad, #srcRules input.bad, #total.bad').forEach(el => el.classList.remove('bad'));
+  $$('#rules .rrow.off, #srcRules .rrow.off').forEach(el => el.classList.remove('off'));
+  for (const x of p.srcPlans) if (x.max === 0) $('#srcrow-' + x.i)?.classList.add('off');
   for (const f of p.fbPlans) {
     if (f.max === 0) $('#fbrow-' + f.i)?.classList.add('off');
     for (const t of f.themes) if (t.max === 0) $(`#throw-${f.i}-${t.j}`)?.classList.add('off');
   }
   for (const e of p.errors) for (const id of e.ids) document.getElementById(id)?.classList.add('bad');
+  applySrcFilter();
   const box = $('#ruleErrors');
   box.hidden = !p.errors.length;
   box.innerHTML = p.errors.length ? `<p>So lässt sich keine Prüfung erstellen:</p><ul>${p.errors.map(e => `<li>${esc(e.msg)}</li>`).join('')}</ul>` : '';
-  $('#totalHint').textContent = p.pool.length ? (p.totalMin <= p.totalMax ? `möglich: ${Math.max(1, p.totalMin)} bis ${p.totalMax}` : 'Regeln widersprechen sich') : '';
+  $('#totalHint').textContent = !p.pool.length ? '' : !p.range ? 'Regeln widersprechen sich' : p.range[1] < 1 ? 'keine Frage auswählbar' : `möglich: ${Math.max(1, p.range[0])} bis ${p.range[1]}`;
 }
 function markDirty() { $('#dirtyHint').hidden = !(state.exam && state.exam.sig !== sigOf(S)); }
 
@@ -1165,14 +1315,25 @@ function renderResult() {
   const teilTxt = e.sel.teil === 'mix' ? `gemischt (A ${nA} · B ${nB})` : 'nur ' + teilName(d, e.sel.teil);
   const nv = +S.variants || 1;
   $('#examMeta').textContent = `${e.items.length} Fragen · ${teilTxt}${nv > 1 ? ` · ${nv} Varianten` : ''} · ${e.restored ? 'wiederhergestellt' : 'erstellt'} ${fmtDate(e.created)}`;
+  renderDist();
+  renderPaper();
+}
+function renderDist() {
+  const e = state.exam, d = state.data; if (!e) return;
+  $$('.dist-by button').forEach(b => b.setAttribute('aria-pressed', b.dataset.by === state.distBy));
+  const row = (name, n, max, title) => `<div class="dist-row" title="${esc(title)}"><span class="nm">${esc(name)}</span><span class="bar"><i style="width:${(n / max * 100).toFixed(1)}%"></i></span><span class="n">${n}</span></div>`;
+  if (state.distBy === 'src') {
+    const by = new Map(); for (const q of e.items) by.set(q.skey, (by.get(q.skey) || 0) + 1);
+    const max = Math.max(1, ...by.values());
+    $('#dist').innerHTML = d.srcs.filter(x => by.has(x.key)).map(x => row(x.name, by.get(x.key), max, x.name)).join('');
+    return;
+  }
   const byFb = new Map(); for (const q of e.items) byFb.set(q.fach, (byFb.get(q.fach) || 0) + 1);
   const max = Math.max(1, ...byFb.values());
   $('#dist').innerHTML = d.fbs.filter(f => byFb.has(f.name)).map(f => {
-    const n = byFb.get(f.name);
     const th = f.themes.map(t => [t.name, e.items.filter(q => q.fach === f.name && q.thema === t.name).length]).filter(x => x[1]).map(x => `${x[0]}: ${x[1]}`).join(', ');
-    return `<div class="dist-row" title="${esc(th)}"><span class="nm">${esc(f.name)}</span><span class="bar"><i style="width:${(n / max * 100).toFixed(1)}%"></i></span><span class="n">${n}</span></div>`;
+    return row(f.name, byFb.get(f.name), max, th);
   }).join('');
-  renderPaper();
 }
 function renderPaper() {
   if (!state.exam) return;
@@ -1215,7 +1376,7 @@ async function decodeCode(str) {
 }
 async function updateCode() {
   const e = state.exam; if (!e) { state.code = ''; $('#codeOut').value = ''; return; }
-  const obj = { v: 1, id: e.id, ts: e.created, f: state.data.isSample ? '' : state.data.fileName, t: S.title, st: S.subtitle, p: e.sel.teil, n: num(e.sel.total), fl: e.sel.fill, o: e.sel.order, r: compactRules(e.sel.rules), src: S.sources ? 1 : 0, h: S.headings ? 1 : 0, nf: S.namefield ? 1 : 0, l: +S.lines || 0, vc: Math.max(1, +S.variants || 1), q: e.items.map(q => q.tok).join('') };
+  const obj = { v: 1, id: e.id, ts: e.created, f: state.data.isSample ? '' : state.data.fileName, t: S.title, st: S.subtitle, p: e.sel.teil, n: num(e.sel.total), fl: e.sel.fill, o: e.sel.order, r: compactRules(e.sel.rules), sr: compactSrc(e.sel.srcRules), src: S.sources ? 1 : 0, h: S.headings ? 1 : 0, nf: S.namefield ? 1 : 0, l: +S.lines || 0, vc: Math.max(1, +S.variants || 1), q: e.items.map(q => q.tok).join('') };
   const code = await encodeCode(obj);
   if (state.exam !== e) return;
   state.code = code; $('#codeOut').value = code;
@@ -1236,7 +1397,7 @@ async function applyCode(str, { silent = false } = {}) {
     return false;
   }
   state.pendingCode = null;
-  Object.assign(S, { teil: obj.p || 'mix', total: obj.n ?? items.length, fill: obj.fl || 'prop', order: obj.o || 'random', rules: expandRules(obj.r), title: obj.t ?? S.title, subtitle: obj.st ?? '', sources: !!obj.src, headings: !!obj.h, namefield: !!obj.nf, lines: obj.l ?? 3, variants: obj.vc || 1 });
+  Object.assign(S, { teil: obj.p || 'mix', total: obj.n ?? items.length, fill: obj.fl || 'prop', order: obj.o || 'random', rules: expandRules(obj.r), srcRules: expandSrc(obj.sr), title: obj.t ?? S.title, subtitle: obj.st ?? '', sources: !!obj.src, headings: !!obj.h, namefield: !!obj.nf, lines: obj.l ?? 3, variants: obj.vc || 1 });
   state.variant = 1;
   saveSettings(); syncInputs(); renderRules(); renderValidation();
   state.exam = { id: obj.id, created: obj.ts || Date.now(), items, sel: selOf(S), sig: sigOf(S), restored: true };
@@ -1583,8 +1744,8 @@ function setData(d, { auto = true } = {}) {
   state.data = d; state.exam = null; state.variant = 1;
   renderSource(); renderFileStatus(); renderRules();
   let p = plan(d, S);
-  if (p.errors.length && p.errors.every(e => e.ids.length === 1 && e.ids[0] === 'total') && p.totalMax >= Math.max(1, p.totalMin)) {
-    S.total = Math.max(1, Math.min(num(S.total) ?? 20, p.totalMax)); if (S.total < p.totalMin) S.total = p.totalMin;
+  if (p.errors.length && p.errors.every(e => e.ids.length === 1 && e.ids[0] === 'total') && p.range && p.range[1] >= Math.max(1, p.range[0])) {
+    S.total = Math.min(Math.max(num(S.total) ?? 20, p.range[0], 1), p.range[1]);
     $('#total').value = S.total; saveSettings(); p = plan(d, S);
   }
   renderValidation(p);
@@ -1632,36 +1793,36 @@ function sampleImg(key, w, h) {
 }
 function sampleData() {
   const imgs = { reihe: sampleImg('reihe', 460, 180), teiler: sampleImg('teiler', 300, 260), sigma: sampleImg('sigma', 440, 280), ghs: sampleImg('ghs', 200, 200) };
-  const ET = 'Übungsband Elektrotechnik', WS = 'Fragenkatalog Werkstoffe', AS = 'Unterweisung Arbeitsschutz';
+  const ET = 'Übungsband Elektrotechnik', WS = 'Fragenkatalog Werkstoffe', AS = 'Unterweisung Arbeitsschutz', AP25 = 'Abschlussprüfung Sommer 2025', AP24 = 'Abschlussprüfung Winter 2024/25';
   const R = (quelle, nr, fach, thema, teil, frage, antwort, choicesRaw = '', qi = null, ai = null) => ({ quelle, nr, fach, thema, teil, frage, antwort, choicesRaw, qImgs: qi ? [imgs[qi]] : [], aImgs: ai ? [imgs[ai]] : [] });
   const rows = [
     R(ET, '3', 'Elektrotechnik', 'Ohmsches Gesetz', 'A', 'Welche Einheit hat der elektrische Widerstand?', '3', '1. Volt\n2. Ampere\n3. Ohm\n4. Watt'),
     R(ET, '9', 'Elektrotechnik', 'Ohmsches Gesetz', 'A', 'Wie ändert sich der Strom, wenn bei gleicher Spannung der Widerstand verdoppelt wird?', '2', '1. Er verdoppelt sich\n2. Er halbiert sich\n3. Er bleibt gleich'),
     R(ET, '14', 'Elektrotechnik', 'Ohmsches Gesetz', 'A', 'Ein Widerstand von 47 Ω liegt an 12 V. Wie groß ist der Strom?', 'I = U / R = 12 V / 47 Ω ≈ 0,26 A'),
     R(ET, '17', 'Elektrotechnik', 'Ohmsches Gesetz', 'B', 'An einem Widerstand fallen bei 20 mA genau 5 V ab. Berechnen Sie den Widerstandswert.', 'R = U / I = 5 V / 0,02 A = 250 Ω'),
-    R(ET, '21', 'Elektrotechnik', 'Ohmsches Gesetz', 'B', 'Berechnen Sie den Gesamtwiderstand der abgebildeten Reihenschaltung und den Strom bei U = 13 V.', 'R = 100 Ω + 220 Ω + 330 Ω = 650 Ω\nI = 13 V / 650 Ω = 20 mA', '', 'reihe'),
+    R(AP25, '4', 'Elektrotechnik', 'Ohmsches Gesetz', 'B', 'Berechnen Sie den Gesamtwiderstand der abgebildeten Reihenschaltung und den Strom bei U = 13 V.', 'R = 100 Ω + 220 Ω + 330 Ω = 650 Ω\nI = 13 V / 650 Ω = 20 mA', '', 'reihe'),
     R(ET, '31', 'Elektrotechnik', 'Schaltungen', 'A', 'Was gilt für die Spannung in einer Parallelschaltung?', '1', '1. An allen Zweigen liegt dieselbe Spannung\n2. Die Teilspannungen addieren sich zur Gesamtspannung\n3. Die Spannung teilt sich im Verhältnis der Widerstände'),
     R(ET, '33', 'Elektrotechnik', 'Schaltungen', 'A', 'Zwei Widerstände von je 100 Ω sind parallel geschaltet. Wie groß ist der Ersatzwiderstand?', '50 Ω'),
     R(ET, '36', 'Elektrotechnik', 'Schaltungen', 'A', 'Welche Aussage zur Reihenschaltung ist richtig?', '1', '1. Der Strom ist an jeder Stelle gleich groß\n– gilt für jeden Widerstand der Reihe\n– gilt auch für die Zuleitung\n2. Die Spannung ist an jedem Widerstand gleich groß\n3. Der Gesamtwiderstand ist kleiner als der kleinste Einzelwiderstand'),
-    R(ET, '40', 'Elektrotechnik', 'Schaltungen', 'B', 'Skizzieren Sie einen unbelasteten Spannungsteiler aus zwei Widerständen und geben Sie die Formel für die Teilspannung U2 an.', 'U2 = U · R2 / (R1 + R2)', '', null, 'teiler'),
+    R(AP25, '7', 'Elektrotechnik', 'Schaltungen', 'B', 'Skizzieren Sie einen unbelasteten Spannungsteiler aus zwei Widerständen und geben Sie die Formel für die Teilspannung U2 an.', 'U2 = U · R2 / (R1 + R2)', '', null, 'teiler'),
     R(ET, '52', 'Elektrotechnik', 'Schutzmaßnahmen', 'A', 'Wofür steht die Abkürzung RCD?', 'Residual Current Device, also Fehlerstrom-Schutzeinrichtung (FI-Schutzschalter)'),
     R(ET, '55', 'Elektrotechnik', 'Schutzmaßnahmen', 'A', 'Welcher Bemessungsdifferenzstrom ist für den zusätzlichen Schutz in Steckdosenstromkreisen üblich?', '2', '1. 10 mA\n2. 30 mA\n3. 300 mA\n4. 500 mA'),
-    R(ET, '58', 'Elektrotechnik', 'Schutzmaßnahmen', 'B', 'Nennen Sie die fünf Sicherheitsregeln in der richtigen Reihenfolge.', '1. Freischalten\n2. Gegen Wiedereinschalten sichern\n3. Spannungsfreiheit feststellen\n4. Erden und kurzschließen\n5. Benachbarte, unter Spannung stehende Teile abdecken oder abschranken'),
+    R(AP24, '3', 'Elektrotechnik', 'Schutzmaßnahmen', 'B', 'Nennen Sie die fünf Sicherheitsregeln in der richtigen Reihenfolge.', '1. Freischalten\n2. Gegen Wiedereinschalten sichern\n3. Spannungsfreiheit feststellen\n4. Erden und kurzschließen\n5. Benachbarte, unter Spannung stehende Teile abdecken oder abschranken'),
     R(ET, '61', 'Elektrotechnik', 'Schutzmaßnahmen', 'B', 'Erläutern Sie, warum der Schutzleiter bei einem Körperschluss das Auslösen der Überstrom-Schutzeinrichtung bewirkt.', 'Über den niederohmigen Schutzleiter fließt ein großer Fehlerstrom. Er bringt die Sicherung oder den Leitungsschutzschalter in kurzer Zeit zum Auslösen, bevor eine gefährliche Berührungsspannung lange anliegt.'),
     R(WS, '4', 'Werkstofftechnik', 'Metalle', 'A', 'Welches Metall hat die höchste elektrische Leitfähigkeit?', '2', '1. Kupfer\n2. Silber\n3. Aluminium\n4. Gold'),
     R(WS, '7', 'Werkstofftechnik', 'Metalle', 'A', 'Was versteht man unter einer Legierung?', 'Ein metallischer Werkstoff aus mindestens zwei Elementen, von denen mindestens eines ein Metall ist, meist durch Zusammenschmelzen hergestellt.'),
-    R(WS, '8', 'Werkstofftechnik', 'Metalle', 'A', 'Woraus besteht Messing?', '2', '1. Kupfer und Zinn\n2. Kupfer und Zink\n3. Eisen und Kohlenstoff'),
+    R(AP24, '11', 'Werkstofftechnik', 'Metalle', 'A', 'Woraus besteht Messing?', '2', '1. Kupfer und Zinn\n2. Kupfer und Zink\n3. Eisen und Kohlenstoff'),
     R(WS, '12', 'Werkstofftechnik', 'Metalle', 'B', 'Beschreiben Sie den Unterschied zwischen Stahl und Gusseisen.', 'Stahl: Kohlenstoffgehalt unter etwa 2 %, schmied- und gut verformbar.\nGusseisen: über etwa 2 % Kohlenstoff, spröde, gut gießbar.'),
-    R(WS, '15', 'Werkstofftechnik', 'Metalle', 'B', 'Lesen Sie aus dem Spannungs-Dehnungs-Diagramm die Streckgrenze Re ab.', 'Re ≈ 235 N/mm²', '', 'sigma'),
+    R(AP25, '15', 'Werkstofftechnik', 'Metalle', 'B', 'Lesen Sie aus dem Spannungs-Dehnungs-Diagramm die Streckgrenze Re ab.', 'Re ≈ 235 N/mm²', '', 'sigma'),
     R(WS, '22', 'Werkstofftechnik', 'Kunststoffe', 'A', 'Welche Kunststoffgruppe lässt sich nach dem Erwärmen erneut verformen?', '2', '1. Duroplaste\n– engmaschig vernetzt\n2. Thermoplaste\n– unvernetzte Fadenmoleküle\n– schmelzbar und schweißbar\n3. Elastomere\n– weitmaschig vernetzt'),
     R(WS, '24', 'Werkstofftechnik', 'Kunststoffe', 'A', 'Nennen Sie zwei typische Isolierstoffe für Kabelmäntel.', 'PVC und PE (auch Gummi, z. B. EPR)'),
-    R(WS, '27', 'Werkstofftechnik', 'Kunststoffe', 'B', 'Erklären Sie, warum sich Duroplaste nicht schweißen lassen.', 'Duroplaste sind engmaschig vernetzt. Beim Erwärmen zersetzen sie sich, statt zu schmelzen.'),
+    R(AP25, '18', 'Werkstofftechnik', 'Kunststoffe', 'B', 'Erklären Sie, warum sich Duroplaste nicht schweißen lassen.', 'Duroplaste sind engmaschig vernetzt. Beim Erwärmen zersetzen sie sich, statt zu schmelzen.'),
     R(AS, '5', 'Arbeitssicherheit', 'Gefahrstoffe', 'A', 'Was bedeutet das abgebildete Gefahrenpiktogramm?', '2', '1. Ätzend\n2. Gesundheitsgefährdend (Achtung)\n3. Entzündbar', 'ghs'),
     R(AS, '6', 'Arbeitssicherheit', 'Gefahrstoffe', 'A', 'Wo finden Sie verbindliche Angaben zum Umgang mit einem Gefahrstoff im Betrieb?', 'Im Sicherheitsdatenblatt und in der Betriebsanweisung'),
-    R(AS, '11', 'Arbeitssicherheit', 'Gefahrstoffe', 'B', 'Nennen Sie die Rangfolge der Schutzmaßnahmen nach dem STOP-Prinzip.', 'Substitution, technische, organisatorische und persönliche Schutzmaßnahmen'),
+    R(AP24, '9', 'Arbeitssicherheit', 'Gefahrstoffe', 'B', 'Nennen Sie die Rangfolge der Schutzmaßnahmen nach dem STOP-Prinzip.', 'Substitution, technische, organisatorische und persönliche Schutzmaßnahmen'),
     R(AS, '18', 'Arbeitssicherheit', 'Erste Hilfe', 'A', 'Welche Notrufnummer gilt europaweit für Rettungsdienst und Feuerwehr?', '2', '1. 110\n2. 112\n3. 116 117'),
     R(AS, '19', 'Arbeitssicherheit', 'Erste Hilfe', 'A', 'Was ist bei einem Stromunfall als Erstes zu tun?', 'Stromkreis unterbrechen und auf Eigenschutz achten. Erst danach Erste Hilfe leisten und den Notruf absetzen.'),
-    R(AS, '23', 'Arbeitssicherheit', 'Erste Hilfe', 'B', 'Wann wird die stabile Seitenlage angewendet, und worauf ist dabei zu achten?', 'Bei bewusstlosen Personen mit normaler Atmung. Kopf überstrecken, Mund als tiefsten Punkt lagern, Atmung laufend kontrollieren.')
+    R(AP25, '21', 'Arbeitssicherheit', 'Erste Hilfe', 'B', 'Wann wird die stabile Seitenlage angewendet, und worauf ist dabei zu achten?', 'Bei bewusstlosen Personen mit normaler Atmung. Kopf überstrecken, Mund als tiefsten Punkt lagern, Atmung laufend kontrollieren.')
   ];
   rows.forEach((q, i) => { q.row = i + 2; });
   const d = finishData({ fileName: 'Beispieldaten', isSample: true, sheetName: 'Fragen', headerRow: 1, colMap: {}, rows, imgCount: 4, notes: [], teilNames: { A: 'Gebunden', B: 'Ungebunden' } });
@@ -1694,6 +1855,7 @@ function cleanRules() {
     if (rf.themes && !Object.keys(rf.themes).length) delete rf.themes;
     if ((rf.min ?? '') === '' && (rf.max ?? '') === '' && !rf.themes) delete S.rules[fb];
   }
+  for (const [k, v] of Object.entries(S.srcRules)) if ((v.min ?? '') === '' && (v.max ?? '') === '') delete S.srcRules[k];
 }
 
 function bind() {
@@ -1729,6 +1891,13 @@ function bind() {
     b.setAttribute('aria-expanded', open); $('#th-' + i).hidden = !open;
     if (open) state.openFb.add(fb.name); else state.openFb.delete(fb.name);
   });
+  $('#srcRules').addEventListener('input', e => {
+    const m = e.target.id.match(/^src-(\d+)-(min|max)$/); if (!m) return;
+    const x = state.data.srcs[+m[1]]; const r = S.srcRules[x.key] || (S.srcRules[x.key] = {});
+    r[m[2]] = e.target.value; cleanRules(); selectionChanged();
+  });
+  $('#srcFilter').addEventListener('input', applySrcFilter);
+  $$('.dist-by button').forEach(b => b.addEventListener('click', () => { state.distBy = b.dataset.by; renderDist(); }));
   $('#rules').addEventListener('input', e => {
     const m = e.target.id.match(/^(fb|th)-(\d+)(?:-(\d+))?-(min|max)$/); if (!m) return;
     const fb = state.data.fbs[+m[2]]; const rf = S.rules[fb.name] || (S.rules[fb.name] = {});
